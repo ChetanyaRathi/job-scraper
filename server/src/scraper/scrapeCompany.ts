@@ -1,4 +1,4 @@
-import { chromium, type Browser } from "playwright";
+import { request, type APIRequestContext } from "playwright";
 import type { Company, ScrapedJob } from "../types.js";
 import { classifyCategory, classifyExperience, isTargetRole } from "./classify.js";
 
@@ -21,6 +21,17 @@ interface LeverJob {
   description?: string;
 }
 
+interface AshbyJob {
+  id: string;
+  title: string;
+  jobUrl?: string;
+  applyUrl?: string;
+  location?: string;
+  publishedAt?: string;
+  descriptionHtml?: string;
+  descriptionPlain?: string;
+}
+
 function decodeEntities(text: string): string {
   return text
     .replace(/&lt;/g, "<")
@@ -38,93 +49,125 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-async function scrapeGreenhouse(browser: Browser, company: Company): Promise<ScrapedJob[]> {
-  const url = `https://boards-api.greenhouse.io/v1/boards/${company.boardToken}/jobs?content=true`;
-  const page = await browser.newPage();
-
-  try {
-    const response = await page.goto(url, { waitUntil: "networkidle", timeout: 45_000 });
-    if (!response || !response.ok()) {
-      throw new Error(`Greenhouse ${company.id}: HTTP ${response?.status()}`);
-    }
-
-    const body = (await response.json()) as { jobs?: GreenhouseJob[] };
-    const jobs = body.jobs ?? [];
-
-    return jobs
-      .map((job) => {
-        const description = stripHtml(job.content ?? "");
-        const category = classifyCategory(job.title, description);
-        const experienceLevel = classifyExperience(job.title, description);
-
-        return {
-          externalId: String(job.id),
-          companyId: company.id,
-          companyName: company.name,
-          title: job.title,
-          location: job.location?.name ?? "",
-          url: job.absolute_url,
-          postedAt: job.updated_at ? new Date(job.updated_at) : null,
-          description: description.slice(0, 2000),
-          experienceLevel,
-          category,
-        } satisfies ScrapedJob;
-      })
-      .filter((job) => isTargetRole(job.category));
-  } finally {
-    await page.close();
+function toScraped(
+  company: Company,
+  input: {
+    externalId: string;
+    title: string;
+    location: string;
+    url: string;
+    postedAt: Date | null;
+    description: string;
   }
+): ScrapedJob | null {
+  const category = classifyCategory(input.title, input.description);
+  if (!isTargetRole(category)) return null;
+
+  return {
+    externalId: input.externalId,
+    companyId: company.id,
+    companyName: company.name,
+    title: input.title,
+    location: input.location,
+    url: input.url,
+    postedAt: input.postedAt,
+    description: input.description.slice(0, 2000),
+    experienceLevel: classifyExperience(input.title, input.description),
+    category,
+  };
 }
 
-async function scrapeLever(browser: Browser, company: Company): Promise<ScrapedJob[]> {
+async function scrapeGreenhouse(
+  api: APIRequestContext,
+  company: Company
+): Promise<ScrapedJob[]> {
+  const url = `https://boards-api.greenhouse.io/v1/boards/${company.boardToken}/jobs`;
+  const response = await api.get(url, { timeout: 30_000 });
+  if (!response.ok()) {
+    throw new Error(`HTTP ${response.status()}`);
+  }
+
+  const body = (await response.json()) as { jobs?: GreenhouseJob[] };
+  return (body.jobs ?? [])
+    .map((job) =>
+      toScraped(company, {
+        externalId: String(job.id),
+        title: job.title,
+        location: job.location?.name ?? "",
+        url: job.absolute_url,
+        postedAt: job.updated_at ? new Date(job.updated_at) : null,
+        description: stripHtml(job.content ?? ""),
+      })
+    )
+    .filter((job): job is ScrapedJob => job !== null);
+}
+
+async function scrapeLever(api: APIRequestContext, company: Company): Promise<ScrapedJob[]> {
   const url = `https://api.lever.co/v0/postings/${company.boardToken}?mode=json`;
-  const page = await browser.newPage();
+  const response = await api.get(url, { timeout: 30_000 });
+  if (!response.ok()) {
+    throw new Error(`HTTP ${response.status()}`);
+  }
 
-  try {
-    const response = await page.goto(url, { waitUntil: "networkidle", timeout: 45_000 });
-    if (!response || !response.ok()) {
-      throw new Error(`Lever ${company.id}: HTTP ${response?.status()}`);
-    }
-
-    const jobs = (await response.json()) as LeverJob[];
-
-    return jobs
-      .map((job) => {
-        const description = job.descriptionPlain ?? stripHtml(job.description ?? "");
-        const category = classifyCategory(job.text, description);
-        const experienceLevel = classifyExperience(job.text, description);
-
-        return {
-          externalId: job.id,
-          companyId: company.id,
-          companyName: company.name,
-          title: job.text,
-          location: job.categories?.location ?? "",
-          url: job.hostedUrl,
-          postedAt: job.createdAt ? new Date(job.createdAt) : null,
-          description: description.slice(0, 2000),
-          experienceLevel,
-          category,
-        } satisfies ScrapedJob;
+  const jobs = (await response.json()) as LeverJob[];
+  return jobs
+    .map((job) =>
+      toScraped(company, {
+        externalId: job.id,
+        title: job.text,
+        location: job.categories?.location ?? "",
+        url: job.hostedUrl,
+        postedAt: job.createdAt ? new Date(job.createdAt) : null,
+        description: job.descriptionPlain ?? stripHtml(job.description ?? ""),
       })
-      .filter((job) => isTargetRole(job.category));
-  } finally {
-    await page.close();
-  }
+    )
+    .filter((job): job is ScrapedJob => job !== null);
 }
 
-export async function scrapeCompany(browser: Browser, company: Company): Promise<ScrapedJob[]> {
-  if (company.ats === "greenhouse") {
-    return scrapeGreenhouse(browser, company);
+async function scrapeAshby(api: APIRequestContext, company: Company): Promise<ScrapedJob[]> {
+  const url = `https://api.ashbyhq.com/posting-api/job-board/${company.boardToken}?includeCompensation=true`;
+  const response = await api.get(url, { timeout: 30_000 });
+  if (!response.ok()) {
+    throw new Error(`HTTP ${response.status()}`);
   }
-  return scrapeLever(browser, company);
+
+  const body = (await response.json()) as {
+    jobs?: AshbyJob[];
+    jobPostings?: AshbyJob[];
+  };
+  const jobs = body.jobs ?? body.jobPostings ?? [];
+
+  return jobs
+    .map((job) =>
+      toScraped(company, {
+        externalId: String(job.id),
+        title: job.title,
+        location: job.location ?? "",
+        url: job.jobUrl ?? job.applyUrl ?? `https://jobs.ashbyhq.com/${company.boardToken}`,
+        postedAt: job.publishedAt ? new Date(job.publishedAt) : null,
+        description: job.descriptionPlain ?? stripHtml(job.descriptionHtml ?? ""),
+      })
+    )
+    .filter((job): job is ScrapedJob => job !== null);
 }
 
-export async function withBrowser<T>(fn: (browser: Browser) => Promise<T>): Promise<T> {
-  const browser = await chromium.launch({ headless: true });
+export async function scrapeCompany(
+  api: APIRequestContext,
+  company: Company
+): Promise<ScrapedJob[]> {
+  if (company.ats === "greenhouse") return scrapeGreenhouse(api, company);
+  if (company.ats === "ashby") return scrapeAshby(api, company);
+  return scrapeLever(api, company);
+}
+
+export async function withApi<T>(fn: (api: APIRequestContext) => Promise<T>): Promise<T> {
+  const api = await request.newContext({
+    userAgent: "job-scraper/1.0 (+https://github.com/ChetanyaRathi/job-scraper)",
+    timeout: 30_000,
+  });
   try {
-    return await fn(browser);
+    return await fn(api);
   } finally {
-    await browser.close();
+    await api.dispose();
   }
 }
