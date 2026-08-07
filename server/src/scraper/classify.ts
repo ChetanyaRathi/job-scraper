@@ -1,33 +1,33 @@
 import type { ExperienceLevel, RoleCategory } from "../types.js";
 
 const ENTRY_PATTERNS =
-  /\b(entry[- ]?level|junior|jr\.?|new grad|new[- ]grad|university|graduate|intern|early career|associate)\b/i;
+  /\b(entry[- ]?level|junior|jr\.?|new grad|new[- ]grad|university grad|early career|associate engineer|intern)\b/i;
 
 const SENIOR_PATTERNS =
-  /\b(senior|sr\.?|staff|principal|lead|manager|director|head of)\b/i;
+  /\b(senior|sr\.?|staff|principal|lead|manager|director|head of|vp\b|chief)\b/i;
 
-const AI_PATTERNS =
-  /\b(ai|artificial intelligence|llm|generative|genai|prompt engineer|chatbot)\b/i;
+const ML_TITLE =
+  /\b(machine learning|ml engineer|ml scientist|deep learning|nlp engineer|computer vision|research scientist)\b/i;
 
-const ML_PATTERNS =
-  /\b(machine learning|ml engineer|deep learning|nlp|computer vision|data scientist|research scientist)\b/i;
+const AI_TITLE =
+  /\b(artificial intelligence|\bai engineer\b|\bai research\b|llm|generative ai|genai|prompt engineer)\b/i;
 
-const SDE_PATTERNS =
-  /\b(software|sde|swe|backend|front[- ]?end|full[- ]?stack|platform|infrastructure|devops|sre|mobile|ios|android|engineer)\b/i;
+const SDE_TITLE =
+  /\b(software engineer|software developer|sde\b|swe\b|backend engineer|frontend engineer|front[- ]end engineer|full[- ]?stack|platform engineer|infrastructure engineer|devops|site reliability|sre\b|ios engineer|android engineer|mobile engineer|security engineer|data engineer)\b/i;
 
 export function classifyExperience(title: string, description: string): ExperienceLevel {
-  const text = `${title} ${description}`;
-  if (ENTRY_PATTERNS.test(text)) return "entry_level";
-  if (SENIOR_PATTERNS.test(text)) return "senior";
-  if (/\b(mid[- ]?level|intermediate)\b/i.test(text)) return "mid";
+  const text = `${title} ${description.slice(0, 400)}`;
+  if (ENTRY_PATTERNS.test(title) || ENTRY_PATTERNS.test(text)) return "entry_level";
+  if (SENIOR_PATTERNS.test(title)) return "senior";
+  if (/\b(mid[- ]?level|intermediate)\b/i.test(title)) return "mid";
   return "any";
 }
 
-export function classifyCategory(title: string, description: string): RoleCategory {
-  const text = `${title} ${description}`;
-  if (ML_PATTERNS.test(text)) return "ml";
-  if (AI_PATTERNS.test(text)) return "ai";
-  if (SDE_PATTERNS.test(text)) return "sde";
+export function classifyCategory(title: string, _description: string): RoleCategory {
+  // Title-first to avoid marketing copy mentioning "AI" pulling in sales/ops roles.
+  if (ML_TITLE.test(title)) return "ml";
+  if (AI_TITLE.test(title)) return "ai";
+  if (SDE_TITLE.test(title)) return "sde";
   return "any";
 }
 
