@@ -1,6 +1,12 @@
 import { request, type APIRequestContext } from "playwright";
 import type { Company, ScrapedJob } from "../types.js";
-import { classifyCategory, classifyExperience, isTargetRole } from "./classify.js";
+import {
+  classifyCategory,
+  classifyEmploymentType,
+  classifyExperience,
+  isEntryOrSde1,
+  isTargetRole,
+} from "./classify.js";
 
 interface GreenhouseJob {
   id: number;
@@ -63,6 +69,9 @@ function toScraped(
   const category = classifyCategory(input.title, input.description);
   if (!isTargetRole(category)) return null;
 
+  const experienceLevel = classifyExperience(input.title, input.description);
+  if (!isEntryOrSde1(input.title, experienceLevel)) return null;
+
   return {
     externalId: input.externalId,
     companyId: company.id,
@@ -72,8 +81,9 @@ function toScraped(
     url: input.url,
     postedAt: input.postedAt,
     description: input.description.slice(0, 2000),
-    experienceLevel: classifyExperience(input.title, input.description),
+    experienceLevel,
     category,
+    employmentType: classifyEmploymentType(input.title),
   };
 }
 

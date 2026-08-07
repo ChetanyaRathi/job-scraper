@@ -1,5 +1,6 @@
 export type ExperienceLevel = "entry_level" | "mid" | "senior" | "any";
 export type RoleCategory = "sde" | "ai" | "ml" | "any";
+export type EmploymentType = "intern" | "full_time";
 
 export interface Company {
   id: string;
@@ -19,6 +20,7 @@ export interface Job {
   description: string;
   experience_level: ExperienceLevel;
   category: RoleCategory;
+  employment_type: EmploymentType;
   first_seen_at: string;
   created_at: string;
 }

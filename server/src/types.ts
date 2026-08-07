@@ -1,5 +1,6 @@
 export type ExperienceLevel = "entry_level" | "mid" | "senior" | "any";
 export type RoleCategory = "sde" | "ai" | "ml" | "any";
+export type EmploymentType = "intern" | "full_time";
 export type Ats = "greenhouse" | "lever" | "ashby";
 
 export interface Company {
@@ -20,6 +21,7 @@ export interface ScrapedJob {
   description: string;
   experienceLevel: ExperienceLevel;
   category: RoleCategory;
+  employmentType: EmploymentType;
 }
 
 export interface JobRow {
@@ -34,6 +36,7 @@ export interface JobRow {
   description: string;
   experience_level: ExperienceLevel;
   category: RoleCategory;
+  employment_type: EmploymentType;
   first_seen_at: Date;
   created_at: Date;
 }

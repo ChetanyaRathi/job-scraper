@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useTransition } from "react";
-import type { Company, ExperienceLevel, Job, JobFilters, RoleCategory } from "./types";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import type { Company, Job, JobFilters, RoleCategory } from "./types";
 
 const DEFAULT_FILTERS: JobFilters = {
   experienceLevels: ["entry_level"],
@@ -26,13 +26,30 @@ function categoryLabel(c: RoleCategory): string {
   return { sde: "SDE", ai: "AI", ml: "ML", any: "Any" }[c];
 }
 
-function levelLabel(l: ExperienceLevel): string {
-  return {
-    entry_level: "Entry Level",
-    mid: "Mid",
-    senior: "Senior",
-    any: "Any",
-  }[l];
+function isInternJob(job: Job): boolean {
+  if (job.employment_type === "intern") return true;
+  return /\b(intern(ship)?|co[- ]?op|coop)\b/i.test(job.title);
+}
+
+function JobCard({ job, index }: { job: Job; index: number }) {
+  return (
+    <li className="job" style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}>
+      <div className="job-meta">
+        <span className="company">{job.company_name}</span>
+        <span className="sep">·</span>
+        <span>{categoryLabel(job.category)}</span>
+        <span className="sep">·</span>
+        <span>Entry / SDE I</span>
+      </div>
+      <a href={job.url} target="_blank" rel="noreferrer" className="job-title">
+        {job.title}
+      </a>
+      <div className="job-foot">
+        <span>{job.location || "Location n/a"}</span>
+        <span>{formatWhen(job.posted_at ?? job.first_seen_at)}</span>
+      </div>
+    </li>
+  );
 }
 
 export function App() {
@@ -50,6 +67,9 @@ export function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
+
+  const internJobs = useMemo(() => jobs.filter(isInternJob), [jobs]);
+  const fullTimeJobs = useMemo(() => jobs.filter((j) => !isInternJob(j)), [jobs]);
 
   useEffect(() => {
     void fetch("/api/companies?limit=30&q=stripe")
@@ -76,12 +96,7 @@ export function App() {
         : "/api/companies?limit=40&q=a";
       void fetch(url)
         .then((r) => r.json())
-        .then((data: { companies: Company[]; total: number }) => {
-          setSuggestions(data.companies);
-          if (typeof data.total === "number" && !q) {
-            // keep global total from stats endpoint sense; ignore filtered total
-          }
-        })
+        .then((data: { companies: Company[] }) => setSuggestions(data.companies))
         .catch(console.error);
     }, 180);
     return () => clearTimeout(handle);
@@ -89,9 +104,7 @@ export function App() {
 
   const loadJobs = (next: JobFilters) => {
     const params = new URLSearchParams();
-    if (next.experienceLevels.length) {
-      params.set("experienceLevels", next.experienceLevels.join(","));
-    }
+    params.set("experienceLevels", "entry_level");
     if (next.categories.length) {
       params.set("categories", next.categories.join(","));
     }
@@ -160,10 +173,11 @@ export function App() {
   }, [toast]);
 
   const updateFilters = (next: JobFilters) => {
-    setFilters(next);
-    loadJobs(next);
+    const locked = { ...next, experienceLevels: ["entry_level" as const] };
+    setFilters(locked);
+    loadJobs(locked);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "set_filters", filters: next }));
+      wsRef.current.send(JSON.stringify({ type: "set_filters", filters: locked }));
     }
   };
 
@@ -225,10 +239,10 @@ export function App() {
       }
       const inserted = data.inserted ?? 0;
       if (inserted > 0) {
-        setToast(`${inserted} new job(s) from ${data.companiesAttempted ?? "?"} companies`);
+        setToast(`${inserted} new entry-level job(s)`);
       } else {
         setToast(
-          `Scrape done — ${data.companiesAttempted ?? 0} companies, ${data.scraped ?? 0} roles, no new matches`
+          `Scrape done — ${data.companiesAttempted ?? 0} companies, no new entry-level matches`
         );
       }
     } catch {
@@ -239,13 +253,14 @@ export function App() {
   };
 
   return (
-    <div className="page">
+    <div className="page wide">
       <div className="atmosphere" aria-hidden />
       <header className="top">
         <div className="brand-block">
           <p className="brand">Job Scraper</p>
           <p className="tagline">
-            USA-only live feed across {companyTotal.toLocaleString() || "1,000+"} company boards
+            USA · Entry Level / SDE I · Intern & Full-time ·{" "}
+            {companyTotal.toLocaleString() || "1,000+"} boards
           </p>
         </div>
         <div className="top-actions">
@@ -269,7 +284,7 @@ export function App() {
 
       {companyStats.total ? (
         <p className="board-stats">
-          Configured boards: {companyStats.total.toLocaleString()} · Greenhouse{" "}
+          Entry Level / SDE I only · Boards {companyStats.total.toLocaleString()} · Greenhouse{" "}
           {(companyStats.greenhouse ?? 0).toLocaleString()} · Lever{" "}
           {(companyStats.lever ?? 0).toLocaleString()} · Ashby{" "}
           {(companyStats.ashby ?? 0).toLocaleString()}
@@ -277,27 +292,6 @@ export function App() {
       ) : null}
 
       <section className="filters" aria-label="Filters">
-        <div className="filter-group">
-          <h2>Level</h2>
-          <div className="chips">
-            {(["entry_level", "mid", "senior"] as ExperienceLevel[]).map((level) => (
-              <button
-                key={level}
-                type="button"
-                className={filters.experienceLevels.includes(level) ? "chip on" : "chip"}
-                onClick={() =>
-                  updateFilters({
-                    ...filters,
-                    experienceLevels: toggleInList(filters.experienceLevels, level),
-                  })
-                }
-              >
-                {levelLabel(level)}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div className="filter-group">
           <h2>Track</h2>
           <div className="chips">
@@ -324,7 +318,7 @@ export function App() {
           <div className="company-search">
             <input
               type="search"
-              placeholder="Search 15,000+ boards (Stripe, OpenAI, Figma…)"
+              placeholder="Search boards (Stripe, OpenAI, Figma…)"
               value={companyQuery}
               onChange={(e) => setCompanyQuery(e.target.value)}
               aria-label="Search companies"
@@ -369,45 +363,46 @@ export function App() {
         </div>
       </section>
 
-      <section className="feed" aria-live="polite">
-        <div className="feed-head">
-          <h2>Live feed</h2>
-          <p>
-            {pending ? "Updating…" : `${jobs.length} role${jobs.length === 1 ? "" : "s"}`} · last
-            24h
-          </p>
-        </div>
-
-        {jobs.length === 0 ? (
-          <div className="empty">
-            <p>No matching jobs yet.</p>
-            <p className="muted">
-              Hit <strong>Scrape now</strong> (or wait for the 10-minute scheduler). Full runs cover
-              all configured boards and can take a few minutes.
+      <section className="feed columns" aria-live="polite">
+        <div className="column">
+          <div className="feed-head">
+            <h2>Intern</h2>
+            <p>
+              {pending ? "Updating…" : `${internJobs.length}`} · last 24h
             </p>
           </div>
-        ) : (
-          <ul className="job-list">
-            {jobs.map((job, i) => (
-              <li key={job.id} className="job" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-                <div className="job-meta">
-                  <span className="company">{job.company_name}</span>
-                  <span className="sep">·</span>
-                  <span>{categoryLabel(job.category)}</span>
-                  <span className="sep">·</span>
-                  <span>{levelLabel(job.experience_level)}</span>
-                </div>
-                <a href={job.url} target="_blank" rel="noreferrer" className="job-title">
-                  {job.title}
-                </a>
-                <div className="job-foot">
-                  <span>{job.location || "Location n/a"}</span>
-                  <span>{formatWhen(job.posted_at ?? job.first_seen_at)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+          {internJobs.length === 0 ? (
+            <div className="empty compact">
+              <p>No intern roles yet.</p>
+            </div>
+          ) : (
+            <ul className="job-list">
+              {internJobs.map((job, i) => (
+                <JobCard key={job.id} job={job} index={i} />
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="column">
+          <div className="feed-head">
+            <h2>Full-time</h2>
+            <p>
+              {pending ? "Updating…" : `${fullTimeJobs.length}`} · Entry / SDE I
+            </p>
+          </div>
+          {fullTimeJobs.length === 0 ? (
+            <div className="empty compact">
+              <p>No full-time entry roles yet.</p>
+            </div>
+          ) : (
+            <ul className="job-list">
+              {fullTimeJobs.map((job, i) => (
+                <JobCard key={job.id} job={job} index={i} />
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       {toast && <div className="toast">{toast}</div>}

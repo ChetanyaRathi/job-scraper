@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { pool } from "./pool.js";
+import { isEntryOrSde1 } from "../scraper/classify.js";
 import { isUsaLocation } from "../scraper/location.js";
 import type { JobFilters, JobRow, ScrapedJob } from "../types.js";
 
@@ -11,9 +12,9 @@ export async function insertNewJobs(jobs: ScrapedJob[]): Promise<JobRow[]> {
       `
       INSERT INTO jobs (
         external_id, company_id, company_name, title, location, url,
-        posted_at, description, experience_level, category
+        posted_at, description, experience_level, category, employment_type
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (company_id, external_id) DO NOTHING
       RETURNING *
       `,
@@ -28,6 +29,7 @@ export async function insertNewJobs(jobs: ScrapedJob[]): Promise<JobRow[]> {
         job.description,
         job.experienceLevel,
         job.category,
+        job.employmentType,
       ]
     );
 
@@ -42,7 +44,7 @@ export async function insertNewJobs(jobs: ScrapedJob[]): Promise<JobRow[]> {
 export async function getRecentJobs(
   filters: JobFilters,
   freshnessHours: number,
-  limit = 100
+  limit = 200
 ): Promise<JobRow[]> {
   const params: unknown[] = [String(freshnessHours)];
   let idx = 2;
@@ -84,8 +86,11 @@ export async function getRecentJobs(
     params
   );
 
-  if (!config.usaOnly) return result.rows;
-  return result.rows.filter((job) => isUsaLocation(job.location)).slice(0, limit);
+  const rows = result.rows.filter((job) => {
+    if (config.usaOnly && !isUsaLocation(job.location)) return false;
+    return isEntryOrSde1(job.title, job.experience_level);
+  });
+  return rows.slice(0, limit);
 }
 
 export function jobMatchesFilters(job: JobRow | ScrapedJob, filters: JobFilters): boolean {
@@ -94,8 +99,13 @@ export function jobMatchesFilters(job: JobRow | ScrapedJob, filters: JobFilters)
     "experience_level" in job ? job.experience_level : job.experienceLevel;
   const category = job.category;
   const location = job.location;
+  const title = job.title;
 
   if (config.usaOnly && !isUsaLocation(location)) {
+    return false;
+  }
+
+  if (!isEntryOrSde1(title, experience)) {
     return false;
   }
 
