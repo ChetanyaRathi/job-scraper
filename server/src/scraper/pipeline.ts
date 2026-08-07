@@ -53,8 +53,21 @@ export async function runScrapePipeline(
   }
 
   const allJobs: ScrapedJob[] = [];
+  const insertedAll: JobRow[] = [];
   const errors: ScrapeRunResult["errors"] = [];
   let completed = 0;
+  let pendingFlush: ScrapedJob[] = [];
+
+  const flush = async () => {
+    if (pendingFlush.length === 0) return;
+    const batch = pendingFlush;
+    pendingFlush = [];
+    const usaJobs = config.usaOnly ? filterUsaJobs(batch) : batch;
+    const fresh = filterFreshJobs(usaJobs);
+    const inserted = await insertNewJobs(fresh);
+    insertedAll.push(...inserted);
+    return inserted;
+  };
 
   console.log(
     `[scraper] Starting cycle — ${targets.length} companies, concurrency=${config.scrapeConcurrency}`
@@ -67,6 +80,7 @@ export async function runScrapePipeline(
         try {
           const jobs = await scrapeCompany(api, company);
           allJobs.push(...jobs);
+          pendingFlush.push(...jobs);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           errors.push({ companyId: company.id, message });
@@ -88,19 +102,17 @@ export async function runScrapePipeline(
       });
     });
 
-    const usaJobs = config.usaOnly ? filterUsaJobs(allJobs) : allJobs;
-    const fresh = filterFreshJobs(usaJobs);
-    const inserted = await insertNewJobs(fresh);
+    await flush();
 
     console.log(
-      `[scraper] Done — companies=${targets.length} scraped=${allJobs.length} usa=${usaJobs.length} fresh=${fresh.length} new=${inserted.length} errors=${errors.length}`
+      `[scraper] Done — companies=${targets.length} scraped=${allJobs.length} new=${insertedAll.length} errors=${errors.length}`
     );
 
     return {
       scraped: allJobs.length,
-      usa: usaJobs.length,
-      fresh: fresh.length,
-      inserted,
+      usa: insertedAll.length,
+      fresh: insertedAll.length,
+      inserted: insertedAll,
       companiesAttempted: targets.length,
       errors,
     };
