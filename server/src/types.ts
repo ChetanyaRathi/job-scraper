@@ -1,10 +1,11 @@
 export type ExperienceLevel = "entry_level" | "mid" | "senior" | "any";
 export type RoleCategory = "sde" | "ai" | "ml" | "any";
+export type Ats = "greenhouse" | "lever" | "ashby";
 
 export interface Company {
   id: string;
   name: string;
-  ats: "greenhouse" | "lever";
+  ats: Ats;
   boardToken: string;
 }
 
