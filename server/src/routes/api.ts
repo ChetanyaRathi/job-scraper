@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { COMPANY_STATS, COMPANIES, getCompany, searchCompanies } from "../companies.js";
+import { COMPANY_STATS, getCompany, searchCompanies } from "../companies.js";
 import { config } from "../config.js";
 import { getRecentJobs } from "../db/jobs.js";
 import { runScrapePipeline } from "../scraper/pipeline.js";
@@ -89,6 +89,3 @@ function parseFilters(query: Record<string, unknown>): JobFilters {
     companyIds: asList(query.companyIds),
   };
 }
-
-// Keep COMPANIES referenced for type side-effects / readiness
-void COMPANIES;
