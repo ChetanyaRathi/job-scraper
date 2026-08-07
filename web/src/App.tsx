@@ -62,6 +62,13 @@ export function App() {
   const [filters, setFilters] = useState<JobFilters>(DEFAULT_FILTERS);
   const [status, setStatus] = useState<"connecting" | "live" | "offline">("connecting");
   const [scraping, setScraping] = useState(false);
+  const [scrapeProgress, setScrapeProgress] = useState<{
+    running: boolean;
+    completed: number;
+    total: number;
+    jobsFound: number;
+    errors: number;
+  } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const wsRef = useRef<WebSocket | null>(null);
@@ -72,7 +79,7 @@ export function App() {
   const fullTimeJobs = useMemo(() => jobs.filter((j) => !isInternJob(j)), [jobs]);
 
   useEffect(() => {
-    void fetch("/api/companies?limit=30&q=stripe")
+    void fetch("/api/companies?limit=30")
       .then((r) => r.json())
       .then(
         (data: {
@@ -86,6 +93,14 @@ export function App() {
         }
       )
       .catch(console.error);
+
+    void fetch("/api/scrape/status")
+      .then((r) => r.json())
+      .then((p) => {
+        setScrapeProgress(p);
+        setScraping(Boolean(p.running));
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -93,7 +108,7 @@ export function App() {
     const handle = setTimeout(() => {
       const url = q
         ? `/api/companies?limit=40&q=${encodeURIComponent(q)}`
-        : "/api/companies?limit=40&q=a";
+        : "/api/companies?limit=30";
       void fetch(url)
         .then((r) => r.json())
         .then((data: { companies: Company[] }) => setSuggestions(data.companies))
@@ -142,7 +157,31 @@ export function App() {
         const msg = JSON.parse(String(event.data)) as {
           type: string;
           jobs?: Job[];
+          progress?: {
+            running: boolean;
+            completed: number;
+            total: number;
+            jobsFound: number;
+            errors: number;
+          };
+          result?: { inserted?: number; companiesAttempted?: number };
+          error?: string;
         };
+        if (msg.type === "scrape_progress" && msg.progress) {
+          setScrapeProgress(msg.progress);
+          setScraping(msg.progress.running);
+        }
+        if (msg.type === "scrape_done") {
+          setScraping(false);
+          if (msg.error) {
+            setToast(msg.error);
+          } else {
+            setToast(
+              `Scrape finished — ${msg.result?.inserted ?? 0} new entry-level jobs from ${msg.result?.companiesAttempted ?? 0} boards`
+            );
+            loadJobs(filtersRef.current);
+          }
+        }
         if (msg.type === "new_jobs" && msg.jobs?.length) {
           setJobs((prev) => {
             const ids = new Set(prev.map((j) => j.id));
