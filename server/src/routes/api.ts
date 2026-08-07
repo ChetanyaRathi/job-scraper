@@ -80,9 +80,6 @@ apiRouter.post("/scrape", (req, res) => {
   // Run in background so full 15k-board scrapes don't time out the HTTP request.
   void runScrapePipeline(companyIds)
     .then((result) => {
-      if (result.inserted.length > 0) {
-        hub.broadcastNewJobs(result.inserted);
-      }
       hub.broadcast({
         type: "scrape_done",
         result: {
