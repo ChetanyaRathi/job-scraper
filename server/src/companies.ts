@@ -73,3 +73,43 @@ export const COMPANY_STATS = COMPANIES.reduce(
 );
 
 COMPANY_STATS.total = COMPANIES.length;
+
+/** Well-known boards shown when the company search is empty. */
+const FEATURED_TOKENS = [
+  "greenhouse:stripe",
+  "greenhouse:airbnb",
+  "greenhouse:datadog",
+  "greenhouse:figma",
+  "greenhouse:cloudflare",
+  "greenhouse:discord",
+  "greenhouse:dropbox",
+  "greenhouse:robinhood",
+  "greenhouse:coinbase",
+  "greenhouse:reddit",
+  "greenhouse:roblox",
+  "greenhouse:doordashusa",
+  "greenhouse:nvidia",
+  "ashby:openai",
+  "ashby:anthropic",
+  "lever:netflix",
+  "greenhouse:block",
+  "greenhouse:twitch",
+  "greenhouse:pinterest",
+  "greenhouse:spotify",
+];
+
+export function featuredCompanies(limit = 30): Company[] {
+  const featured = FEATURED_TOKENS.map((id) => getCompany(id)).filter(
+    (c): c is Company => Boolean(c)
+  );
+  if (featured.length >= limit) return featured.slice(0, limit);
+  // fill with more recognizable names
+  const extras = COMPANIES.filter(
+    (c) =>
+      !featured.some((f) => f.id === c.id) &&
+      /^(stripe|airbnb|meta|google|amazon|microsoft|apple|uber|lyft|snap|shopify|square|block|openai|anthropic|nvidia|intel|amd|salesforce|oracle|adobe|zoom|slack|atlassian|databricks|snowflake|palantir|anduril|scale)/i.test(
+        c.boardToken
+      )
+  );
+  return [...featured, ...extras].slice(0, limit);
+}

@@ -1,6 +1,7 @@
 import type { WebSocket } from "ws";
 import type { ExperienceLevel, JobFilters, JobRow, RoleCategory } from "../types.js";
 import { jobMatchesFilters } from "../db/jobs.js";
+import type { ScrapeProgress } from "../scraper/progress.js";
 
 interface ClientState {
   socket: WebSocket;
@@ -57,6 +58,19 @@ export class Hub {
         );
       }
     }
+  }
+
+  broadcast(message: unknown): void {
+    const payload = JSON.stringify(message);
+    for (const client of this.clients.values()) {
+      if (client.socket.readyState === client.socket.OPEN) {
+        client.socket.send(payload);
+      }
+    }
+  }
+
+  broadcastProgress(progress: ScrapeProgress): void {
+    this.broadcast({ type: "scrape_progress", progress });
   }
 
   get clientCount(): number {

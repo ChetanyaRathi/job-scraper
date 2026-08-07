@@ -4,6 +4,11 @@ import { insertNewJobs } from "../db/jobs.js";
 import type { Company, JobRow, ScrapedJob } from "../types.js";
 import { filterFreshJobs } from "./freshness.js";
 import { filterUsaJobs } from "./location.js";
+import {
+  beginScrapeProgress,
+  endScrapeProgress,
+  tickScrapeProgress,
+} from "./progress.js";
 import { scrapeCompany, withApi } from "./scrapeCompany.js";
 
 export interface ScrapeRunResult {
@@ -54,40 +59,52 @@ export async function runScrapePipeline(
   console.log(
     `[scraper] Starting cycle — ${targets.length} companies, concurrency=${config.scrapeConcurrency}`
   );
+  beginScrapeProgress(targets.length);
 
-  await withApi(async (api) => {
-    await mapPool(targets, config.scrapeConcurrency, async (company) => {
-      try {
-        const jobs = await scrapeCompany(api, company);
-        allJobs.push(...jobs);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        errors.push({ companyId: company.id, message });
-      } finally {
-        completed += 1;
-        if (completed % 250 === 0 || completed === targets.length) {
-          console.log(
-            `[scraper] Progress ${completed}/${targets.length} · jobs=${allJobs.length} · errors=${errors.length}`
-          );
+  try {
+    await withApi(async (api) => {
+      await mapPool(targets, config.scrapeConcurrency, async (company) => {
+        try {
+          const jobs = await scrapeCompany(api, company);
+          allJobs.push(...jobs);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          errors.push({ companyId: company.id, message });
+        } finally {
+          completed += 1;
+          if (completed % 50 === 0 || completed === targets.length) {
+            tickScrapeProgress({
+              completed,
+              jobsFound: allJobs.length,
+              errors: errors.length,
+            });
+          }
+          if (completed % 250 === 0 || completed === targets.length) {
+            console.log(
+              `[scraper] Progress ${completed}/${targets.length} · jobs=${allJobs.length} · errors=${errors.length}`
+            );
+          }
         }
-      }
+      });
     });
-  });
 
-  const usaJobs = config.usaOnly ? filterUsaJobs(allJobs) : allJobs;
-  const fresh = filterFreshJobs(usaJobs);
-  const inserted = await insertNewJobs(fresh);
+    const usaJobs = config.usaOnly ? filterUsaJobs(allJobs) : allJobs;
+    const fresh = filterFreshJobs(usaJobs);
+    const inserted = await insertNewJobs(fresh);
 
-  console.log(
-    `[scraper] Done — companies=${targets.length} scraped=${allJobs.length} usa=${usaJobs.length} fresh=${fresh.length} new=${inserted.length} errors=${errors.length}`
-  );
+    console.log(
+      `[scraper] Done — companies=${targets.length} scraped=${allJobs.length} usa=${usaJobs.length} fresh=${fresh.length} new=${inserted.length} errors=${errors.length}`
+    );
 
-  return {
-    scraped: allJobs.length,
-    usa: usaJobs.length,
-    fresh: fresh.length,
-    inserted,
-    companiesAttempted: targets.length,
-    errors,
-  };
+    return {
+      scraped: allJobs.length,
+      usa: usaJobs.length,
+      fresh: fresh.length,
+      inserted,
+      companiesAttempted: targets.length,
+      errors,
+    };
+  } finally {
+    endScrapeProgress();
+  }
 }

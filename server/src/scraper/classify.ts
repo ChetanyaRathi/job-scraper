@@ -37,8 +37,13 @@ export function classifyCategory(title: string, _description: string): RoleCateg
   if (ML_TITLE.test(title)) return "ml";
   if (AI_TITLE.test(title)) return "ai";
   if (SDE_TITLE.test(title)) return "sde";
-  // Intern titles sometimes omit "engineer" — still keep software internships
-  if (INTERN_PATTERNS.test(title) && /\b(software|sde|swe|engineering|developer|ai|ml|machine learning)\b/i.test(title)) {
+  // Intern titles sometimes omit "software" — keep engineering/AI/ML internships
+  if (
+    INTERN_PATTERNS.test(title) &&
+    /\b(software|sde|swe|engineer|engineering|developer|devops|sre|platform|data|ai|ml|machine learning|computer science|cs)\b/i.test(
+      title
+    )
+  ) {
     if (ML_TITLE.test(title) || /\bml\b/i.test(title)) return "ml";
     if (/\bai\b/i.test(title)) return "ai";
     return "sde";

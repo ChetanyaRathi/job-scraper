@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { COMPANY_STATS, getCompany, searchCompanies } from "../companies.js";
+import { COMPANY_STATS, featuredCompanies, getCompany, searchCompanies } from "../companies.js";
 import { config } from "../config.js";
 import { getRecentJobs } from "../db/jobs.js";
 import { runScrapePipeline } from "../scraper/pipeline.js";
@@ -29,6 +29,16 @@ apiRouter.get("/companies", (req, res) => {
   if (ids.length > 0) {
     const companies = ids.map((id) => getCompany(id)).filter(Boolean);
     res.json({ total: COMPANY_STATS.total, companies, stats: COMPANY_STATS });
+    return;
+  }
+
+  if (!q.trim()) {
+    res.json({
+      total: COMPANY_STATS.total,
+      matched: COMPANY_STATS.total,
+      companies: featuredCompanies(Number.isFinite(limit) ? limit : 30),
+      stats: COMPANY_STATS,
+    });
     return;
   }
 

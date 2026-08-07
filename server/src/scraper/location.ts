@@ -31,8 +31,13 @@ export function isUsaLocation(location: string): boolean {
 
   if (hasUs) return true;
 
-  // Plain "Remote" / "Hybrid" with no foreign country — common on US boards
-  if (/^(remote|hybrid|work from home|wfh)\b/i.test(loc) && !NON_US_MARKERS.test(loc)) {
+  // Ambiguous US-board locations with no foreign country marker
+  if (
+    /^(remote|hybrid|work from home|wfh|in[- ]?office|on[- ]?site|onsite|distributed|multiple locations|various locations)\b/i.test(
+      loc
+    ) &&
+    !NON_US_MARKERS.test(loc)
+  ) {
     return true;
   }
 
