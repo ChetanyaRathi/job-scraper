@@ -3,6 +3,7 @@ import { COMPANY_STATS, featuredCompanies, getCompany, searchCompanies } from ".
 import { config } from "../config.js";
 import { getRecentJobs } from "../db/jobs.js";
 import { runScrapePipeline } from "../scraper/pipeline.js";
+import { getScrapeProgress } from "../scraper/progress.js";
 import type { Ats, ExperienceLevel, JobFilters, RoleCategory } from "../types.js";
 import { hub } from "../ws/hub.js";
 
@@ -48,6 +49,10 @@ apiRouter.get("/companies", (req, res) => {
 
 apiRouter.get("/companies/stats", (_req, res) => {
   res.json(COMPANY_STATS);
+});
+
+apiRouter.get("/scrape/status", (_req, res) => {
+  res.json(getScrapeProgress());
 });
 
 apiRouter.get("/jobs", async (req, res) => {

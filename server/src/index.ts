@@ -6,6 +6,7 @@ import { COMPANY_STATS } from "./companies.js";
 import { config } from "./config.js";
 import { pool } from "./db/pool.js";
 import { apiRouter } from "./routes/api.js";
+import { onScrapeProgress } from "./scraper/progress.js";
 import { startScheduler } from "./scraper/scheduler.js";
 import { hub } from "./ws/hub.js";
 import type { JobFilters } from "./types.js";
@@ -40,6 +41,10 @@ async function main() {
     });
 
     socket.on("close", () => hub.remove(socket));
+  });
+
+  onScrapeProgress((progress) => {
+    hub.broadcastProgress(progress);
   });
 
   startScheduler((jobs) => {
