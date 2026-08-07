@@ -264,29 +264,29 @@ export function App() {
         body: JSON.stringify(body),
       });
       const data = (await res.json()) as {
-        inserted?: number;
-        scraped?: number;
-        companiesAttempted?: number;
-        jobs?: Job[];
+        error?: string;
+        message?: string;
+        progress?: {
+          running: boolean;
+          completed: number;
+          total: number;
+          jobsFound: number;
+          errors: number;
+        };
       };
-      if (data.jobs?.length) {
-        setJobs((prev) => {
-          const ids = new Set(prev.map((j) => j.id));
-          const fresh = data.jobs!.filter((j) => !ids.has(j.id));
-          return [...fresh, ...prev];
-        });
+      if (res.status === 409) {
+        setToast("Scrape already running");
+        if (data.progress) setScrapeProgress(data.progress);
+        return;
       }
-      const inserted = data.inserted ?? 0;
-      if (inserted > 0) {
-        setToast(`${inserted} new entry-level job(s)`);
-      } else {
-        setToast(
-          `Scrape done — ${data.companiesAttempted ?? 0} companies, no new entry-level matches`
-        );
-      }
+      if (data.progress) setScrapeProgress(data.progress);
+      setToast(
+        filters.companyIds.length > 0
+          ? "Scraping selected companies…"
+          : "Scraping all 15,000+ boards — feed will fill as results arrive"
+      );
     } catch {
       setToast("Scrape failed");
-    } finally {
       setScraping(false);
     }
   };
