@@ -6,10 +6,12 @@ async function main() {
   console.log(
     JSON.stringify(
       {
+        companiesAttempted: result.companiesAttempted,
         scraped: result.scraped,
         fresh: result.fresh,
         inserted: result.inserted.length,
-        errors: result.errors,
+        errorCount: result.errors.length,
+        errorsSample: result.errors.slice(0, 10),
         sample: result.inserted.slice(0, 5).map((j) => ({
           company: j.company_name,
           title: j.title,

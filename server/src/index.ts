@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import http from "http";
 import { WebSocketServer } from "ws";
+import { COMPANY_STATS } from "./companies.js";
 import { config } from "./config.js";
 import { pool } from "./db/pool.js";
 import { apiRouter } from "./routes/api.js";
@@ -49,6 +50,9 @@ async function main() {
   server.listen(config.port, () => {
     console.log(`API + WebSocket listening on http://localhost:${config.port}`);
     console.log(`WebSocket endpoint: ws://localhost:${config.port}/ws`);
+    console.log(
+      `Companies configured: ${COMPANY_STATS.total} (greenhouse=${COMPANY_STATS.greenhouse}, lever=${COMPANY_STATS.lever}, ashby=${COMPANY_STATS.ashby})`
+    );
   });
 }
 
