@@ -8,10 +8,10 @@ export const COMPANIES: Company[] = [
   { id: "figma", name: "Figma", ats: "greenhouse", boardToken: "figma" },
   { id: "notion", name: "Notion", ats: "greenhouse", boardToken: "notion" },
   { id: "cloudflare", name: "Cloudflare", ats: "greenhouse", boardToken: "cloudflare" },
-  { id: "shopify", name: "Shopify", ats: "greenhouse", boardToken: "shopify" },
-  { id: "netflix", name: "Netflix", ats: "lever", boardToken: "netflix" },
-  { id: "spotify", name: "Spotify", ats: "lever", boardToken: "spotify" },
-  { id: "twitch", name: "Twitch", ats: "greenhouse", boardToken: "twitch" },
+  { id: "discord", name: "Discord", ats: "greenhouse", boardToken: "discord" },
+  { id: "dropbox", name: "Dropbox", ats: "greenhouse", boardToken: "dropbox" },
+  { id: "affirm", name: "Affirm", ats: "lever", boardToken: "affirm" },
+  { id: "eventbrite", name: "Eventbrite", ats: "lever", boardToken: "eventbrite" },
 ];
 
 export function getCompany(id: string): Company | undefined {
