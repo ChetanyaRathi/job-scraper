@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { COMPANIES } from "../companies.js";
+import { COMPANY_STATS, COMPANIES, getCompany, searchCompanies } from "../companies.js";
 import { config } from "../config.js";
 import { getRecentJobs } from "../db/jobs.js";
 import { runScrapePipeline } from "../scraper/pipeline.js";
-import type { ExperienceLevel, JobFilters, RoleCategory } from "../types.js";
+import type { Ats, ExperienceLevel, JobFilters, RoleCategory } from "../types.js";
 import { hub } from "../ws/hub.js";
 
 export const apiRouter = Router();
@@ -12,24 +12,36 @@ apiRouter.get("/health", (_req, res) => {
   res.json({
     ok: true,
     clients: hub.clientCount,
+    companies: COMPANY_STATS.total,
     scrapeIntervalMinutes: config.scrapeIntervalMinutes,
     freshnessHours: config.freshnessHours,
+    scrapeConcurrency: config.scrapeConcurrency,
   });
 });
 
-apiRouter.get("/companies", (_req, res) => {
-  res.json(
-    COMPANIES.map((c) => ({
-      id: c.id,
-      name: c.name,
-      ats: c.ats,
-    }))
-  );
+apiRouter.get("/companies", (req, res) => {
+  const q = typeof req.query.q === "string" ? req.query.q : "";
+  const limit = Number(req.query.limit ?? 50);
+  const ats = typeof req.query.ats === "string" ? (req.query.ats as Ats) : undefined;
+  const ids = typeof req.query.ids === "string" ? req.query.ids.split(",").filter(Boolean) : [];
+
+  if (ids.length > 0) {
+    const companies = ids.map((id) => getCompany(id)).filter(Boolean);
+    res.json({ total: COMPANY_STATS.total, companies, stats: COMPANY_STATS });
+    return;
+  }
+
+  const result = searchCompanies(q, Number.isFinite(limit) ? limit : 50, ats);
+  res.json({ ...result, stats: COMPANY_STATS });
+});
+
+apiRouter.get("/companies/stats", (_req, res) => {
+  res.json(COMPANY_STATS);
 });
 
 apiRouter.get("/jobs", async (req, res) => {
   try {
-    const filters = parseFilters(req.query);
+    const filters = parseFilters(req.query as Record<string, unknown>);
     const jobs = await getRecentJobs(filters, config.freshnessHours);
     res.json({ jobs, filters });
   } catch (err) {
@@ -47,7 +59,15 @@ apiRouter.post("/scrape", async (req, res) => {
     if (result.inserted.length > 0) {
       hub.broadcastNewJobs(result.inserted);
     }
-    res.json(result);
+    res.json({
+      scraped: result.scraped,
+      fresh: result.fresh,
+      inserted: result.inserted.length,
+      companiesAttempted: result.companiesAttempted,
+      errorCount: result.errors.length,
+      errors: result.errors.slice(0, 50),
+      jobs: result.inserted.slice(0, 100),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Scrape failed" });
@@ -69,3 +89,6 @@ function parseFilters(query: Record<string, unknown>): JobFilters {
     companyIds: asList(query.companyIds),
   };
 }
+
+// Keep COMPANIES referenced for type side-effects / readiness
+void COMPANIES;
