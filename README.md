@@ -147,6 +147,7 @@ Then open **http://localhost:5173**
 | `SCRAPE_ON_START` | Run a scrape when the server boots (default `false`) |
 | `SCRAPE_CONCURRENCY` | Parallel company fetches (default `40`) |
 | `SCRAPE_LIMIT` | Cap companies per cycle; `0` = all (default `0`) |
+| `USA_ONLY` | Keep only USA / US-remote jobs (default `true`) |
 
 ---
 
@@ -154,9 +155,10 @@ Then open **http://localhost:5173**
 
 1. Playwright pulls jobs from each company's Greenhouse or Lever board.
 2. Titles/descriptions are classified into **SDE / AI / ML** and experience levels (including **Entry Level**).
-3. Jobs older than `FRESHNESS_HOURS` are dropped (when `posted_at` is available).
-4. New rows are inserted into Postgres (`ON CONFLICT DO NOTHING`).
-5. Inserts are broadcast over WebSockets; each client only receives jobs matching its selected filters.
+3. Locations are filtered to **USA only** (US cities/states, United States, US-remote). Non-US roles are dropped.
+4. Jobs older than `FRESHNESS_HOURS` are dropped (when `posted_at` is available).
+5. New rows are inserted into Postgres (`ON CONFLICT DO NOTHING`).
+6. Inserts are broadcast over WebSockets; each client only receives jobs matching its selected filters.
 
 ---
 

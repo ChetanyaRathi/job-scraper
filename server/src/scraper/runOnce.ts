@@ -8,6 +8,7 @@ async function main() {
       {
         companiesAttempted: result.companiesAttempted,
         scraped: result.scraped,
+        usa: result.usa,
         fresh: result.fresh,
         inserted: result.inserted.length,
         errorCount: result.errors.length,
