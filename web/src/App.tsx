@@ -36,7 +36,11 @@ function levelLabel(l: ExperienceLevel): string {
 }
 
 export function App() {
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companyTotal, setCompanyTotal] = useState(0);
+  const [companyStats, setCompanyStats] = useState<Record<string, number>>({});
+  const [suggestions, setSuggestions] = useState<Company[]>([]);
+  const [selectedCompanies, setSelectedCompanies] = useState<Company[]>([]);
+  const [companyQuery, setCompanyQuery] = useState("");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filters, setFilters] = useState<JobFilters>(DEFAULT_FILTERS);
   const [status, setStatus] = useState<"connecting" | "live" | "offline">("connecting");
@@ -48,11 +52,40 @@ export function App() {
   filtersRef.current = filters;
 
   useEffect(() => {
-    void fetch("/api/companies")
+    void fetch("/api/companies?limit=30&q=stripe")
       .then((r) => r.json())
-      .then((data: Company[]) => setCompanies(data))
+      .then(
+        (data: {
+          total: number;
+          companies: Company[];
+          stats?: Record<string, number>;
+        }) => {
+          setCompanyTotal(data.total);
+          setCompanyStats(data.stats ?? {});
+          setSuggestions(data.companies);
+        }
+      )
       .catch(console.error);
   }, []);
+
+  useEffect(() => {
+    const q = companyQuery.trim();
+    const handle = setTimeout(() => {
+      const url = q
+        ? `/api/companies?limit=40&q=${encodeURIComponent(q)}`
+        : "/api/companies?limit=40&q=a";
+      void fetch(url)
+        .then((r) => r.json())
+        .then((data: { companies: Company[]; total: number }) => {
+          setSuggestions(data.companies);
+          if (typeof data.total === "number" && !q) {
+            // keep global total from stats endpoint sense; ignore filtered total
+          }
+        })
+        .catch(console.error);
+    }, 180);
+    return () => clearTimeout(handle);
+  }, [companyQuery]);
 
   const loadJobs = (next: JobFilters) => {
     const params = new URLSearchParams();
@@ -134,6 +167,29 @@ export function App() {
     }
   };
 
+  const selectCompany = (company: Company) => {
+    if (filters.companyIds.includes(company.id)) return;
+    const nextIds = [...filters.companyIds, company.id];
+    setSelectedCompanies((prev) =>
+      prev.some((c) => c.id === company.id) ? prev : [...prev, company]
+    );
+    updateFilters({ ...filters, companyIds: nextIds });
+    setCompanyQuery("");
+  };
+
+  const clearCompanies = () => {
+    setSelectedCompanies([]);
+    updateFilters({ ...filters, companyIds: [] });
+  };
+
+  const removeCompany = (id: string) => {
+    setSelectedCompanies((prev) => prev.filter((c) => c.id !== id));
+    updateFilters({
+      ...filters,
+      companyIds: filters.companyIds.filter((c) => c !== id),
+    });
+  };
+
   const requestNotifications = async () => {
     if (!("Notification" in window)) return;
     if (Notification.permission === "granted") {
@@ -154,16 +210,26 @@ export function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = (await res.json()) as { inserted?: Job[]; scraped?: number };
-      if (data.inserted?.length) {
+      const data = (await res.json()) as {
+        inserted?: number;
+        scraped?: number;
+        companiesAttempted?: number;
+        jobs?: Job[];
+      };
+      if (data.jobs?.length) {
         setJobs((prev) => {
           const ids = new Set(prev.map((j) => j.id));
-          const fresh = data.inserted!.filter((j) => !ids.has(j.id));
+          const fresh = data.jobs!.filter((j) => !ids.has(j.id));
           return [...fresh, ...prev];
         });
-        setToast(`${data.inserted.length} new job(s) found`);
+      }
+      const inserted = data.inserted ?? 0;
+      if (inserted > 0) {
+        setToast(`${inserted} new job(s) from ${data.companiesAttempted ?? "?"} companies`);
       } else {
-        setToast(`Scrape done — ${data.scraped ?? 0} roles checked, no new matches`);
+        setToast(
+          `Scrape done — ${data.companiesAttempted ?? 0} companies, ${data.scraped ?? 0} roles, no new matches`
+        );
       }
     } catch {
       setToast("Scrape failed");
@@ -178,7 +244,9 @@ export function App() {
       <header className="top">
         <div className="brand-block">
           <p className="brand">Job Scraper</p>
-          <p className="tagline">Live careers feed for Entry Level · SDE · AI · ML</p>
+          <p className="tagline">
+            Live careers feed across {companyTotal.toLocaleString() || "1,000+"} company boards
+          </p>
         </div>
         <div className="top-actions">
           <span className={`pulse status-${status}`}>
@@ -198,6 +266,15 @@ export function App() {
           </button>
         </div>
       </header>
+
+      {companyStats.total ? (
+        <p className="board-stats">
+          Configured boards: {companyStats.total.toLocaleString()} · Greenhouse{" "}
+          {(companyStats.greenhouse ?? 0).toLocaleString()} · Lever{" "}
+          {(companyStats.lever ?? 0).toLocaleString()} · Ashby{" "}
+          {(companyStats.ashby ?? 0).toLocaleString()}
+        </p>
+      ) : null}
 
       <section className="filters" aria-label="Filters">
         <div className="filter-group">
@@ -244,29 +321,50 @@ export function App() {
 
         <div className="filter-group companies">
           <h2>Companies</h2>
-          <div className="chips wrap">
-            <button
-              type="button"
-              className={filters.companyIds.length === 0 ? "chip on" : "chip"}
-              onClick={() => updateFilters({ ...filters, companyIds: [] })}
-            >
-              All
+          <div className="company-search">
+            <input
+              type="search"
+              placeholder="Search 15,000+ boards (Stripe, OpenAI, Figma…)"
+              value={companyQuery}
+              onChange={(e) => setCompanyQuery(e.target.value)}
+              aria-label="Search companies"
+            />
+            <button type="button" className="ghost compact" onClick={clearCompanies}>
+              All companies
             </button>
-            {companies.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className={filters.companyIds.includes(c.id) ? "chip on" : "chip"}
-                onClick={() =>
-                  updateFilters({
-                    ...filters,
-                    companyIds: toggleInList(filters.companyIds, c.id),
-                  })
-                }
-              >
-                {c.name}
-              </button>
-            ))}
+          </div>
+
+          {selectedCompanies.length > 0 && (
+            <div className="chips wrap selected">
+              {selectedCompanies.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="chip on"
+                  onClick={() => removeCompany(c.id)}
+                  title="Remove filter"
+                >
+                  {c.name} ×
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="chips wrap suggestions">
+            {suggestions
+              .filter((c) => !filters.companyIds.includes(c.id))
+              .slice(0, 24)
+              .map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="chip"
+                  onClick={() => selectCompany(c)}
+                >
+                  {c.name}
+                  <span className="ats">{c.ats}</span>
+                </button>
+              ))}
           </div>
         </div>
       </section>
@@ -284,7 +382,8 @@ export function App() {
           <div className="empty">
             <p>No matching jobs yet.</p>
             <p className="muted">
-              Hit <strong>Scrape now</strong> or wait for the 10-minute scheduler.
+              Hit <strong>Scrape now</strong> (or wait for the 10-minute scheduler). Full runs cover
+              all configured boards and can take a few minutes.
             </p>
           </div>
         ) : (
