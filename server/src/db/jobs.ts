@@ -70,7 +70,8 @@ export async function getRecentJobs(
     params.push(filters.companyIds);
   }
 
-  params.push(limit);
+  const fetchLimit = config.usaOnly ? Math.min(limit * 5, 1000) : limit;
+  params.push(fetchLimit);
 
   const result = await pool.query<JobRow>(
     `
@@ -84,7 +85,7 @@ export async function getRecentJobs(
   );
 
   if (!config.usaOnly) return result.rows;
-  return result.rows.filter((job) => isUsaLocation(job.location));
+  return result.rows.filter((job) => isUsaLocation(job.location)).slice(0, limit);
 }
 
 export function jobMatchesFilters(job: JobRow | ScrapedJob, filters: JobFilters): boolean {

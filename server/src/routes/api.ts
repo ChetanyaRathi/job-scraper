@@ -16,6 +16,7 @@ apiRouter.get("/health", (_req, res) => {
     scrapeIntervalMinutes: config.scrapeIntervalMinutes,
     freshnessHours: config.freshnessHours,
     scrapeConcurrency: config.scrapeConcurrency,
+    usaOnly: config.usaOnly,
   });
 });
 
