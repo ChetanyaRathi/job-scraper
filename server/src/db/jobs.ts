@@ -42,21 +42,16 @@ export async function getRecentJobs(
   freshnessHours: number,
   limit = 100
 ): Promise<JobRow[]> {
-  const conditions: string[] = [
-    `(posted_at IS NULL OR posted_at >= NOW() - ($1::text || ' hours')::interval)`,
-    `first_seen_at >= NOW() - ($1::text || ' hours')::interval`,
-  ];
   const params: unknown[] = [String(freshnessHours)];
   let idx = 2;
 
-  // Keep jobs that are either freshly posted OR first seen within the freshness window
-  // (posted_at is often missing on public boards).
-  const freshnessClause = `(
-    (posted_at IS NOT NULL AND posted_at >= NOW() - ($1::text || ' hours')::interval)
-    OR (posted_at IS NULL AND first_seen_at >= NOW() - ($1::text || ' hours')::interval)
-  )`;
-
-  const where: string[] = [freshnessClause];
+  // Prefer posted_at when present; otherwise use first_seen_at (public boards often omit dates).
+  const where: string[] = [
+    `(
+      (posted_at IS NOT NULL AND posted_at >= NOW() - ($1::text || ' hours')::interval)
+      OR (posted_at IS NULL AND first_seen_at >= NOW() - ($1::text || ' hours')::interval)
+    )`,
+  ];
 
   if (filters.experienceLevels.length > 0 && !filters.experienceLevels.includes("any")) {
     where.push(`experience_level = ANY($${idx++}::text[])`);
@@ -117,6 +112,3 @@ export function jobMatchesFilters(job: JobRow | ScrapedJob, filters: JobFilters)
 
   return true;
 }
-
-// silence unused lint for earlier draft vars
-void conditions;
