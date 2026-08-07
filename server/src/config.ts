@@ -14,4 +14,8 @@ export const config = {
   scrapeIntervalMinutes: Number(env("SCRAPE_INTERVAL_MINUTES", "10")),
   freshnessHours: Number(env("FRESHNESS_HOURS", "24")),
   scrapeOnStart: env("SCRAPE_ON_START", "true") === "true",
+  /** Parallel company fetches per scrape cycle */
+  scrapeConcurrency: Number(env("SCRAPE_CONCURRENCY", "40")),
+  /** Optional cap for a cycle (0 = all configured companies) */
+  scrapeLimit: Number(env("SCRAPE_LIMIT", "0")),
 };
