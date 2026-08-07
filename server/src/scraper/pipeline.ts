@@ -3,10 +3,12 @@ import { config } from "../config.js";
 import { insertNewJobs } from "../db/jobs.js";
 import type { Company, JobRow, ScrapedJob } from "../types.js";
 import { filterFreshJobs } from "./freshness.js";
+import { filterUsaJobs } from "./location.js";
 import { scrapeCompany, withApi } from "./scrapeCompany.js";
 
 export interface ScrapeRunResult {
   scraped: number;
+  usa: number;
   fresh: number;
   inserted: JobRow[];
   companiesAttempted: number;
@@ -72,15 +74,17 @@ export async function runScrapePipeline(
     });
   });
 
-  const fresh = filterFreshJobs(allJobs);
+  const usaJobs = config.usaOnly ? filterUsaJobs(allJobs) : allJobs;
+  const fresh = filterFreshJobs(usaJobs);
   const inserted = await insertNewJobs(fresh);
 
   console.log(
-    `[scraper] Done — companies=${targets.length} scraped=${allJobs.length} fresh=${fresh.length} new=${inserted.length} errors=${errors.length}`
+    `[scraper] Done — companies=${targets.length} scraped=${allJobs.length} usa=${usaJobs.length} fresh=${fresh.length} new=${inserted.length} errors=${errors.length}`
   );
 
   return {
     scraped: allJobs.length,
+    usa: usaJobs.length,
     fresh: fresh.length,
     inserted,
     companiesAttempted: targets.length,

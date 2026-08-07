@@ -18,4 +18,6 @@ export const config = {
   scrapeConcurrency: Number(env("SCRAPE_CONCURRENCY", "40")),
   /** Optional cap for a cycle (0 = all configured companies) */
   scrapeLimit: Number(env("SCRAPE_LIMIT", "0")),
+  /** Only keep USA / US-remote roles */
+  usaOnly: env("USA_ONLY", "true") === "true",
 };
