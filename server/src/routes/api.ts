@@ -66,30 +66,45 @@ apiRouter.get("/jobs", async (req, res) => {
   }
 });
 
-apiRouter.post("/scrape", async (req, res) => {
-  try {
-    const companyIds = Array.isArray(req.body?.companyIds)
-      ? (req.body.companyIds as string[])
-      : undefined;
-    const result = await runScrapePipeline(companyIds);
-    if (result.inserted.length > 0) {
-      hub.broadcastNewJobs(result.inserted);
-    }
-    res.json({
-      scraped: result.scraped,
-      usa: result.usa,
-      fresh: result.fresh,
-      inserted: result.inserted.length,
-      companiesAttempted: result.companiesAttempted,
-      errorCount: result.errors.length,
-      errors: result.errors.slice(0, 50),
-      jobs: result.inserted.slice(0, 100),
-      usaOnly: config.usaOnly,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Scrape failed" });
+apiRouter.post("/scrape", (req, res) => {
+  const progress = getScrapeProgress();
+  if (progress.running) {
+    res.status(409).json({ error: "Scrape already running", progress });
+    return;
   }
+
+  const companyIds = Array.isArray(req.body?.companyIds)
+    ? (req.body.companyIds as string[])
+    : undefined;
+
+  // Run in background so full 15k-board scrapes don't time out the HTTP request.
+  void runScrapePipeline(companyIds)
+    .then((result) => {
+      if (result.inserted.length > 0) {
+        hub.broadcastNewJobs(result.inserted);
+      }
+      hub.broadcast({
+        type: "scrape_done",
+        result: {
+          scraped: result.scraped,
+          usa: result.usa,
+          fresh: result.fresh,
+          inserted: result.inserted.length,
+          companiesAttempted: result.companiesAttempted,
+          errorCount: result.errors.length,
+        },
+      });
+    })
+    .catch((err) => {
+      console.error(err);
+      hub.broadcast({ type: "scrape_done", error: "Scrape failed" });
+    });
+
+  res.status(202).json({
+    started: true,
+    message: "Scrape started — watch live progress in the UI",
+    progress: getScrapeProgress(),
+  });
 });
 
 function parseFilters(query: Record<string, unknown>): JobFilters {
