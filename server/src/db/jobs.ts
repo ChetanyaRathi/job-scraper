@@ -1,4 +1,6 @@
+import { config } from "../config.js";
 import { pool } from "./pool.js";
+import { isUsaLocation } from "../scraper/location.js";
 import type { JobFilters, JobRow, ScrapedJob } from "../types.js";
 
 export async function insertNewJobs(jobs: ScrapedJob[]): Promise<JobRow[]> {
@@ -81,7 +83,8 @@ export async function getRecentJobs(
     params
   );
 
-  return result.rows;
+  if (!config.usaOnly) return result.rows;
+  return result.rows.filter((job) => isUsaLocation(job.location));
 }
 
 export function jobMatchesFilters(job: JobRow | ScrapedJob, filters: JobFilters): boolean {
@@ -89,6 +92,11 @@ export function jobMatchesFilters(job: JobRow | ScrapedJob, filters: JobFilters)
   const experience =
     "experience_level" in job ? job.experience_level : job.experienceLevel;
   const category = job.category;
+  const location = job.location;
+
+  if (config.usaOnly && !isUsaLocation(location)) {
+    return false;
+  }
 
   if (filters.companyIds.length > 0 && !filters.companyIds.includes(companyId)) {
     return false;
