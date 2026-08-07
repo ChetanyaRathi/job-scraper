@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { Job, JobFilters, RoleCategory } from "./types";
 
+type Step = "scrape" | "scraping" | "choose" | "results";
+type JobType = "intern" | "full_time";
+
 const DEFAULT_FILTERS: JobFilters = {
   experienceLevels: ["entry_level"],
   categories: ["sde", "ai", "ml"],
   companyIds: [],
 };
-
-function toggleInList<T extends string>(list: T[], value: T): T[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
 
 function formatWhen(iso: string | null): string {
   if (!iso) return "Recently";
@@ -51,11 +50,12 @@ function JobCard({ job, index }: { job: Job; index: number }) {
 }
 
 export function App() {
+  const [step, setStep] = useState<Step>("scrape");
+  const [jobType, setJobType] = useState<JobType | null>(null);
   const [companyTotal, setCompanyTotal] = useState(0);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [filters, setFilters] = useState<JobFilters>(DEFAULT_FILTERS);
+  const [filters] = useState<JobFilters>(DEFAULT_FILTERS);
   const [status, setStatus] = useState<"connecting" | "live" | "offline">("connecting");
-  const [scraping, setScraping] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<{
     running: boolean;
     completed: number;
@@ -63,14 +63,17 @@ export function App() {
     jobsFound: number;
     errors: number;
   } | null>(null);
+  const [lastInserted, setLastInserted] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const wsRef = useRef<WebSocket | null>(null);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
-  const internJobs = useMemo(() => jobs.filter(isInternJob), [jobs]);
-  const fullTimeJobs = useMemo(() => jobs.filter((j) => !isInternJob(j)), [jobs]);
+  const visibleJobs = useMemo(() => {
+    if (!jobType) return [];
+    return jobType === "intern" ? jobs.filter(isInternJob) : jobs.filter((j) => !isInternJob(j));
+  }, [jobs, jobType]);
 
   useEffect(() => {
     void fetch("/api/companies/stats")
@@ -82,17 +85,15 @@ export function App() {
       .then((r) => r.json())
       .then((p) => {
         setScrapeProgress(p);
-        setScraping(Boolean(p.running));
+        if (p.running) setStep("scraping");
       })
       .catch(() => undefined);
   }, []);
 
-  const loadJobs = (next: JobFilters) => {
+  const loadJobs = () => {
     const params = new URLSearchParams();
     params.set("experienceLevels", "entry_level");
-    if (next.categories.length) {
-      params.set("categories", next.categories.join(","));
-    }
+    params.set("categories", filtersRef.current.categories.join(","));
 
     startTransition(() => {
       void fetch(`/api/jobs?${params}`)
@@ -101,10 +102,6 @@ export function App() {
         .catch(console.error);
     });
   };
-
-  useEffect(() => {
-    loadJobs(filters);
-  }, []);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -134,35 +131,31 @@ export function App() {
           result?: { inserted?: number; companiesAttempted?: number };
           error?: string;
         };
+
         if (msg.type === "scrape_progress" && msg.progress) {
           setScrapeProgress(msg.progress);
-          setScraping(msg.progress.running);
+          if (msg.progress.running) setStep("scraping");
         }
+
         if (msg.type === "scrape_done") {
-          setScraping(false);
           if (msg.error) {
             setToast(msg.error);
-          } else {
-            setToast(
-              `Scrape finished — ${msg.result?.inserted ?? 0} new jobs`
-            );
-            loadJobs(filtersRef.current);
+            setStep("scrape");
+            return;
           }
+          setLastInserted(msg.result?.inserted ?? 0);
+          setToast(`Scrape finished — ${msg.result?.inserted ?? 0} new jobs`);
+          loadJobs();
+          setJobType(null);
+          setStep("choose");
         }
+
         if (msg.type === "new_jobs" && msg.jobs?.length) {
           setJobs((prev) => {
             const ids = new Set(prev.map((j) => j.id));
             const fresh = msg.jobs!.filter((j) => !ids.has(j.id));
             return [...fresh, ...prev];
           });
-          const count = msg.jobs.length;
-          const label = count === 1 ? "1 new job" : `${count} new jobs`;
-          setToast(label);
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification("Job Scraper", {
-              body: `${label} matching your filters`,
-            });
-          }
         }
       } catch {
         // ignore
@@ -178,27 +171,10 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const updateFilters = (next: JobFilters) => {
-    const locked = { ...next, experienceLevels: ["entry_level" as const], companyIds: [] };
-    setFilters(locked);
-    loadJobs(locked);
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "set_filters", filters: locked }));
-    }
-  };
-
-  const requestNotifications = async () => {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "granted") {
-      setToast("Notifications already enabled");
-      return;
-    }
-    const perm = await Notification.requestPermission();
-    setToast(perm === "granted" ? "Notifications enabled" : "Notifications blocked");
-  };
-
   const scrapeNow = async () => {
-    setScraping(true);
+    setStep("scraping");
+    setJobType(null);
+    setJobs([]);
     try {
       const res = await fetch("/api/scrape", {
         method: "POST",
@@ -218,123 +194,131 @@ export function App() {
       if (res.status === 409) {
         setToast("Scrape already running");
         if (data.progress) setScrapeProgress(data.progress);
+        setStep("scraping");
         return;
       }
       if (data.progress) setScrapeProgress(data.progress);
       setToast("Scraping all boards…");
     } catch {
       setToast("Scrape failed");
-      setScraping(false);
+      setStep("scrape");
     }
   };
 
+  const chooseType = (type: JobType) => {
+    setJobType(type);
+    if (jobs.length === 0) loadJobs();
+    setStep("results");
+  };
+
   return (
-    <div className="page wide">
+    <div className="page narrow">
       <div className="atmosphere" aria-hidden />
-      <header className="top">
+      <header className="top simple">
         <div className="brand-block">
           <p className="brand">Job Scraper</p>
           <p className="tagline">
-            USA entry-level & intern roles ·{" "}
-            {companyTotal.toLocaleString() || "15,000+"} boards
+            USA · Entry Level / SDE I · {companyTotal.toLocaleString() || "15,000+"} boards
           </p>
         </div>
-        <div className="top-actions">
-          <span className={`pulse status-${status}`}>
-            <span className="dot" />
-            {status === "live" ? "Live" : status === "connecting" ? "Connecting" : "Offline"}
-          </span>
-          <button type="button" className="ghost" onClick={() => void requestNotifications()}>
-            Alerts
-          </button>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => void scrapeNow()}
-            disabled={scraping}
-          >
-            {scraping ? "Scraping…" : "Scrape now"}
-          </button>
-        </div>
+        <span className={`pulse status-${status}`}>
+          <span className="dot" />
+          {status === "live" ? "Live" : status === "connecting" ? "Connecting" : "Offline"}
+        </span>
       </header>
 
-      <div className="simple-tracks" aria-label="Track filters">
-        {(["sde", "ai", "ml"] as RoleCategory[]).map((cat) => (
-          <button
-            key={cat}
-            type="button"
-            className={filters.categories.includes(cat) ? "chip on" : "chip"}
-            onClick={() =>
-              updateFilters({
-                ...filters,
-                categories: toggleInList(filters.categories, cat),
-              })
-            }
-          >
-            {categoryLabel(cat)}
+      {step === "scrape" && (
+        <section className="hero-step">
+          <h1>Start by scraping</h1>
+          <p>Pull fresh USA entry-level roles from company career boards.</p>
+          <button type="button" className="primary big" onClick={() => void scrapeNow()}>
+            Scrape jobs
           </button>
-        ))}
-      </div>
+        </section>
+      )}
 
-      {scrapeProgress?.running || scraping ? (
-        <div className="scrape-banner">
-          <div className="scrape-banner-top">
-            <strong>Scraping boards…</strong>
-            <span>
-              {scrapeProgress?.completed?.toLocaleString() ?? 0}/
-              {scrapeProgress?.total?.toLocaleString() ?? "…"}
-            </span>
+      {step === "scraping" && (
+        <section className="hero-step">
+          <h1>Scraping boards…</h1>
+          <p>Hang tight — this can take a few minutes across all companies.</p>
+          <div className="scrape-banner plain">
+            <div className="scrape-banner-top">
+              <strong>Progress</strong>
+              <span>
+                {scrapeProgress?.completed?.toLocaleString() ?? 0}/
+                {scrapeProgress?.total?.toLocaleString() ?? "…"}
+              </span>
+            </div>
+            <div className="scrape-bar">
+              <div
+                className="scrape-bar-fill"
+                style={{
+                  width: scrapeProgress?.total
+                    ? `${Math.min(100, (100 * scrapeProgress.completed) / scrapeProgress.total)}%`
+                    : "10%",
+                }}
+              />
+            </div>
           </div>
-          <div className="scrape-bar">
-            <div
-              className="scrape-bar-fill"
-              style={{
-                width: scrapeProgress?.total
-                  ? `${Math.min(100, (100 * scrapeProgress.completed) / scrapeProgress.total)}%`
-                  : "8%",
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
+        </section>
+      )}
 
-      <section className="feed columns" aria-live="polite">
-        <div className="column">
-          <div className="feed-head">
-            <h2>Intern</h2>
-            <p>{pending ? "Updating…" : `${internJobs.length}`} · last 24h</p>
+      {step === "choose" && (
+        <section className="hero-step">
+          <h1>What are you looking for?</h1>
+          <p>
+            Scrape complete
+            {lastInserted !== null ? ` · ${lastInserted} new jobs saved` : ""}. Pick one to view.
+          </p>
+          <div className="choice-row">
+            <button type="button" className="choice" onClick={() => chooseType("intern")}>
+              <span className="choice-title">Intern</span>
+              <span className="choice-sub">Internships & co-ops</span>
+            </button>
+            <button type="button" className="choice" onClick={() => chooseType("full_time")}>
+              <span className="choice-title">Full-time</span>
+              <span className="choice-sub">Entry Level / SDE I</span>
+            </button>
           </div>
-          {internJobs.length === 0 ? (
-            <div className="empty compact">
-              <p>No intern roles yet.</p>
+          <button type="button" className="ghost" onClick={() => void scrapeNow()}>
+            Scrape again
+          </button>
+        </section>
+      )}
+
+      {step === "results" && jobType && (
+        <section className="feed single" aria-live="polite">
+          <div className="feed-head results-head">
+            <div>
+              <h2>{jobType === "intern" ? "Intern roles" : "Full-time roles"}</h2>
+              <p>
+                {pending ? "Updating…" : `${visibleJobs.length} roles`} · last 24h · Entry / SDE I
+              </p>
+            </div>
+            <div className="results-actions">
+              <button type="button" className="ghost" onClick={() => setStep("choose")}>
+                Change type
+              </button>
+              <button type="button" className="ghost" onClick={() => void scrapeNow()}>
+                Scrape again
+              </button>
+            </div>
+          </div>
+
+          {visibleJobs.length === 0 ? (
+            <div className="empty">
+              <p>No {jobType === "intern" ? "intern" : "full-time entry"} roles found yet.</p>
+              <p className="muted">Try scraping again or switch type.</p>
             </div>
           ) : (
             <ul className="job-list">
-              {internJobs.map((job, i) => (
+              {visibleJobs.map((job, i) => (
                 <JobCard key={job.id} job={job} index={i} />
               ))}
             </ul>
           )}
-        </div>
-
-        <div className="column">
-          <div className="feed-head">
-            <h2>Full-time</h2>
-            <p>{pending ? "Updating…" : `${fullTimeJobs.length}`} · Entry / SDE I</p>
-          </div>
-          {fullTimeJobs.length === 0 ? (
-            <div className="empty compact">
-              <p>No full-time entry roles yet.</p>
-            </div>
-          ) : (
-            <ul className="job-list">
-              {fullTimeJobs.map((job, i) => (
-                <JobCard key={job.id} job={job} index={i} />
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+        </section>
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </div>
