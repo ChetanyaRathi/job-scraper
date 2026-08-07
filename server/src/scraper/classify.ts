@@ -10,7 +10,7 @@ const ML_TITLE =
   /\b(machine learning|ml engineer|ml scientist|deep learning|nlp engineer|computer vision|research scientist)\b/i;
 
 const AI_TITLE =
-  /\b(artificial intelligence|\bai engineer\b|\bai research\b|llm|generative ai|genai|prompt engineer)\b/i;
+  /\b(artificial intelligence|ai engineer|ai research|llm|generative ai|genai|prompt engineer)\b/i;
 
 const SDE_TITLE =
   /\b(software engineer|software developer|sde\b|swe\b|backend engineer|frontend engineer|front[- ]end engineer|full[- ]?stack|platform engineer|infrastructure engineer|devops|site reliability|sre\b|ios engineer|android engineer|mobile engineer|security engineer|data engineer)\b/i;
