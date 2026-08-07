@@ -61,12 +61,14 @@ apiRouter.post("/scrape", async (req, res) => {
     }
     res.json({
       scraped: result.scraped,
+      usa: result.usa,
       fresh: result.fresh,
       inserted: result.inserted.length,
       companiesAttempted: result.companiesAttempted,
       errorCount: result.errors.length,
       errors: result.errors.slice(0, 50),
       jobs: result.inserted.slice(0, 100),
+      usaOnly: config.usaOnly,
     });
   } catch (err) {
     console.error(err);

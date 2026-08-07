@@ -245,7 +245,7 @@ export function App() {
         <div className="brand-block">
           <p className="brand">Job Scraper</p>
           <p className="tagline">
-            Live careers feed across {companyTotal.toLocaleString() || "1,000+"} company boards
+            USA-only live feed across {companyTotal.toLocaleString() || "1,000+"} company boards
           </p>
         </div>
         <div className="top-actions">
