@@ -40,7 +40,7 @@ export function searchCompanies(
   query = "",
   limit = 50,
   ats?: Ats
-): { total: number; companies: Company[] } {
+): { total: number; matched: number; companies: Company[] } {
   const q = query.trim().toLowerCase();
   let list = COMPANIES;
 
@@ -58,7 +58,8 @@ export function searchCompanies(
   }
 
   return {
-    total: list.length,
+    total: COMPANIES.length,
+    matched: list.length,
     companies: list.slice(0, Math.min(Math.max(limit, 1), 500)),
   };
 }
