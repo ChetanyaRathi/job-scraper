@@ -330,6 +330,33 @@ export function App() {
         </p>
       ) : null}
 
+      {scrapeProgress?.running || scraping ? (
+        <div className="scrape-banner">
+          <div className="scrape-banner-top">
+            <strong>Scraping boards…</strong>
+            <span>
+              {scrapeProgress?.completed?.toLocaleString() ?? 0}/
+              {scrapeProgress?.total?.toLocaleString() ?? "…"} · matched{" "}
+              {scrapeProgress?.jobsFound?.toLocaleString() ?? 0}
+            </span>
+          </div>
+          <div className="scrape-bar">
+            <div
+              className="scrape-bar-fill"
+              style={{
+                width: scrapeProgress?.total
+                  ? `${Math.min(100, (100 * scrapeProgress.completed) / scrapeProgress.total)}%`
+                  : "8%",
+              }}
+            />
+          </div>
+          <p className="muted">
+            Entry-level USA roles are uncommon on many boards — a full pass can take several minutes.
+            Columns update when the run finishes.
+          </p>
+        </div>
+      ) : null}
+
       <section className="filters" aria-label="Filters">
         <div className="filter-group">
           <h2>Track</h2>
