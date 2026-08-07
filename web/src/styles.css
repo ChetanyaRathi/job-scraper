@@ -148,11 +148,62 @@ button.ghost {
   background: rgba(255, 255, 255, 0.45);
 }
 
+.board-stats {
+  margin: -1rem 0 1.5rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  animation: rise 550ms ease-out both;
+}
+
 .filters {
   display: grid;
   gap: 1.25rem;
   margin-bottom: 2rem;
   animation: rise 600ms ease-out both;
+}
+
+.company-search {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+}
+
+.company-search input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  padding: 0.6rem 1rem;
+  color: var(--ink);
+  outline: none;
+}
+
+.company-search input:focus {
+  border-color: rgba(15, 138, 106, 0.55);
+  box-shadow: 0 0 0 3px rgba(15, 138, 106, 0.12);
+}
+
+button.compact {
+  padding: 0.45rem 0.8rem;
+  white-space: nowrap;
+}
+
+.chip .ats {
+  margin-left: 0.35rem;
+  opacity: 0.55;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+.suggestions {
+  max-height: 9.5rem;
+  overflow: auto;
+  padding-right: 0.25rem;
 }
 
 .filter-group h2 {

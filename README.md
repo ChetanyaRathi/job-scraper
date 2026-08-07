@@ -62,12 +62,25 @@ Frontend (Live Feed + Notifications)
 
 | Layer | Choice |
 | --- | --- |
-| Scraping | Playwright (Greenhouse + Lever public boards) |
+| Scraping | Playwright request API (Greenhouse + Lever + Ashby) |
+| Company config | `server/data/companies.json` (**15,000+** boards) |
 | Scheduling | Interval scheduler (default every 10 minutes) |
 | Database | PostgreSQL |
 | API | Express |
 | Real-time | WebSockets (`ws`) |
 | Frontend | React + Vite |
+
+### Company coverage
+
+Board tokens are loaded from `server/data/companies.json` (Greenhouse, Lever, Ashby).
+
+Rebuild/update the list anytime:
+
+```bash
+npm run companies:build
+```
+
+This pulls public ATS board indexes and writes a fresh config (currently ~15k companies).
 
 ---
 
@@ -131,7 +144,9 @@ Then open **http://localhost:5173**
 | `PORT` | API / WebSocket port (default `3001`) |
 | `SCRAPE_INTERVAL_MINUTES` | How often to scrape (default `10`) |
 | `FRESHNESS_HOURS` | Max job age to keep (default `24`) |
-| `SCRAPE_ON_START` | Run a scrape when the server boots (default `true`) |
+| `SCRAPE_ON_START` | Run a scrape when the server boots (default `false`) |
+| `SCRAPE_CONCURRENCY` | Parallel company fetches (default `40`) |
+| `SCRAPE_LIMIT` | Cap companies per cycle; `0` = all (default `0`) |
 
 ---
 
