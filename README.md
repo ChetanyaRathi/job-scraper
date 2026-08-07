@@ -9,11 +9,11 @@ Users pick what they care about — **Entry Level** roles, **SDE / AI / ML** tra
 ## Features
 
 - **User-driven filters** — select by experience level (Entry Level), role category (SDE / AI / ML), and target companies.
-- **Scheduled scraping** — a Playwright-based scheduler crawls company career pages every 10 minutes.
-- **Freshness window** — only jobs posted in the last 24 hours are kept.
-- **Durable storage** — matched jobs are stored in PostgreSQL.
+- **Scheduled scraping** — a Playwright-based scheduler crawls company career boards every 10 minutes.
+- **Freshness window** — only jobs posted (or first seen) in the last 24 hours are kept in the feed.
+- **Durable storage** — matched jobs are stored in PostgreSQL with deduplication.
 - **Real-time delivery** — newly discovered jobs are pushed to the frontend over WebSockets.
-- **Live feed + notifications** — the frontend renders an always-updating feed and alerts you to new roles.
+- **Live feed + notifications** — the frontend renders an always-updating feed and optional browser alerts.
 
 ---
 
@@ -56,85 +56,92 @@ Push new jobs via WebSocket
 Frontend (Live Feed + Notifications)
 ```
 
-### Pipeline stages
-
-| Stage | Responsibility |
-| --- | --- |
-| **Filters** | Capture user preferences (level, category, companies) that scope what gets scraped and surfaced. |
-| **Scheduler** | Trigger scraping runs on a fixed 10-minute cadence using Playwright. |
-| **Scraper** | Load and parse each company's careers page, extracting job title, link, location, and posted time. |
-| **Freshness filter** | Discard anything older than 24 hours so the feed only shows current openings. |
-| **Storage** | Upsert jobs into PostgreSQL, deduplicating so each role is stored once. |
-| **WebSocket push** | Emit only newly inserted jobs to connected clients in real time. |
-| **Frontend** | Display a live feed and raise notifications as new jobs arrive. |
-
 ---
 
 ## Tech Stack
 
-- **Scraping:** [Playwright](https://playwright.dev/)
-- **Scheduling:** interval-based scheduler (every 10 minutes)
-- **Database:** PostgreSQL
-- **Real-time transport:** WebSockets
-- **Frontend:** live feed UI with notifications
+| Layer | Choice |
+| --- | --- |
+| Scraping | Playwright (Greenhouse + Lever public boards) |
+| Scheduling | Interval scheduler (default every 10 minutes) |
+| Database | PostgreSQL |
+| API | Express |
+| Real-time | WebSockets (`ws`) |
+| Frontend | React + Vite |
+
+---
+
+## Project layout
+
+```
+server/src/          Backend API, scraper, scheduler, WebSocket hub
+web/src/             Live feed UI
+docker-compose.yml   Local PostgreSQL
+```
 
 ---
 
 ## Getting Started
 
-> The application code is not yet added to this repository. The steps below describe the intended setup once the services are implemented.
-
 ### Prerequisites
 
-- Node.js 18+ (or Python 3.11+, depending on implementation)
-- PostgreSQL 14+
-- Playwright browsers installed
+- Node.js 18+
+- Docker (for PostgreSQL)
+- Playwright browsers (`npx playwright install chromium`)
 
 ### Setup
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/ChetanyaRathi/job-scraper.git
-cd job-scraper
-
-# 2. Install dependencies
-# (e.g. for Node.js)
+# 1. Install dependencies
 npm install
-npx playwright install
+npx playwright install chromium
+
+# 2. Start PostgreSQL
+npm run db:up
 
 # 3. Configure environment
 cp .env.example .env
-# set DATABASE_URL, scrape interval, target companies, etc.
 
-# 4. Run database migrations
+# 4. Run migrations
 npm run migrate
 
-# 5. Start the backend (scheduler + WebSocket server)
-npm run start:server
-
-# 6. Start the frontend
-npm run start:web
+# 5. Start API + frontend together
+npm run dev
 ```
+
+Then open **http://localhost:5173**
+
+- API / WebSocket: `http://localhost:3001` · `ws://localhost:3001/ws`
+- Manual scrape: `POST /api/scrape` or the **Scrape now** button in the UI
+
+### Useful scripts
+
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Start server + frontend |
+| `npm run migrate` | Create/update DB schema |
+| `npm run scrape:once` | Run one scrape cycle |
+| `npm run db:up` / `db:down` | Start/stop Postgres |
 
 ### Environment variables
 
 | Variable | Description |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string. |
-| `SCRAPE_INTERVAL_MINUTES` | How often to scrape (default: `10`). |
-| `FRESHNESS_HOURS` | Max job age to keep (default: `24`). |
-| `WS_PORT` | Port for the WebSocket server. |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `PORT` | API / WebSocket port (default `3001`) |
+| `SCRAPE_INTERVAL_MINUTES` | How often to scrape (default `10`) |
+| `FRESHNESS_HOURS` | Max job age to keep (default `24`) |
+| `SCRAPE_ON_START` | Run a scrape when the server boots (default `true`) |
 
 ---
 
-## Roadmap
+## How filtering works
 
-- [ ] Implement Playwright scrapers per company careers page
-- [ ] Add scheduler with configurable interval
-- [ ] Define PostgreSQL schema and migrations
-- [ ] Build WebSocket server for real-time job pushes
-- [ ] Build frontend live feed + notifications
-- [ ] Add user filter persistence (Entry Level / SDE / AI / ML / Companies)
+1. Playwright pulls jobs from each company's Greenhouse or Lever board.
+2. Titles/descriptions are classified into **SDE / AI / ML** and experience levels (including **Entry Level**).
+3. Jobs older than `FRESHNESS_HOURS` are dropped (when `posted_at` is available).
+4. New rows are inserted into Postgres (`ON CONFLICT DO NOTHING`).
+5. Inserts are broadcast over WebSockets; each client only receives jobs matching its selected filters.
 
 ---
 
