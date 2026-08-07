@@ -8,7 +8,9 @@ Users pick what they care about — **Entry Level** roles, **SDE / AI / ML** tra
 
 ## Features
 
-- **User-driven filters** — select by experience level (Entry Level), role category (SDE / AI / ML), and target companies.
+- **Entry Level / SDE I only** — feed is locked to internships and entry-level / SDE I full-time roles.
+- **Two-column live feed** — Intern vs Full-time.
+- **User-driven filters** — role track (SDE / AI / ML) and target companies.
 - **Scheduled scraping** — a Playwright-based scheduler crawls company career boards every 10 minutes.
 - **Freshness window** — only jobs posted (or first seen) in the last 24 hours are kept in the feed.
 - **Durable storage** — matched jobs are stored in PostgreSQL with deduplication.
