@@ -95,7 +95,15 @@ a {
   margin: 0.55rem 0 0;
   color: var(--ink-soft);
   opacity: 0.8;
-  max-width: 28ch;
+  max-width: 36ch;
+}
+
+.simple-tracks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: -0.5rem 0 1.75rem;
+  animation: rise 550ms ease-out both;
 }
 
 .top-actions {

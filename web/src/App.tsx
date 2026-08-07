@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { Company, Job, JobFilters, RoleCategory } from "./types";
+import type { Job, JobFilters, RoleCategory } from "./types";
 
 const DEFAULT_FILTERS: JobFilters = {
   experienceLevels: ["entry_level"],
@@ -38,8 +38,6 @@ function JobCard({ job, index }: { job: Job; index: number }) {
         <span className="company">{job.company_name}</span>
         <span className="sep">·</span>
         <span>{categoryLabel(job.category)}</span>
-        <span className="sep">·</span>
-        <span>Entry / SDE I</span>
       </div>
       <a href={job.url} target="_blank" rel="noreferrer" className="job-title">
         {job.title}
@@ -54,10 +52,6 @@ function JobCard({ job, index }: { job: Job; index: number }) {
 
 export function App() {
   const [companyTotal, setCompanyTotal] = useState(0);
-  const [companyStats, setCompanyStats] = useState<Record<string, number>>({});
-  const [suggestions, setSuggestions] = useState<Company[]>([]);
-  const [selectedCompanies, setSelectedCompanies] = useState<Company[]>([]);
-  const [companyQuery, setCompanyQuery] = useState("");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filters, setFilters] = useState<JobFilters>(DEFAULT_FILTERS);
   const [status, setStatus] = useState<"connecting" | "live" | "offline">("connecting");
@@ -79,19 +73,9 @@ export function App() {
   const fullTimeJobs = useMemo(() => jobs.filter((j) => !isInternJob(j)), [jobs]);
 
   useEffect(() => {
-    void fetch("/api/companies?limit=30")
+    void fetch("/api/companies/stats")
       .then((r) => r.json())
-      .then(
-        (data: {
-          total: number;
-          companies: Company[];
-          stats?: Record<string, number>;
-        }) => {
-          setCompanyTotal(data.total);
-          setCompanyStats(data.stats ?? {});
-          setSuggestions(data.companies);
-        }
-      )
+      .then((stats: { total?: number }) => setCompanyTotal(stats.total ?? 0))
       .catch(console.error);
 
     void fetch("/api/scrape/status")
@@ -103,28 +87,11 @@ export function App() {
       .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    const q = companyQuery.trim();
-    const handle = setTimeout(() => {
-      const url = q
-        ? `/api/companies?limit=40&q=${encodeURIComponent(q)}`
-        : "/api/companies?limit=30";
-      void fetch(url)
-        .then((r) => r.json())
-        .then((data: { companies: Company[] }) => setSuggestions(data.companies))
-        .catch(console.error);
-    }, 180);
-    return () => clearTimeout(handle);
-  }, [companyQuery]);
-
   const loadJobs = (next: JobFilters) => {
     const params = new URLSearchParams();
     params.set("experienceLevels", "entry_level");
     if (next.categories.length) {
       params.set("categories", next.categories.join(","));
-    }
-    if (next.companyIds.length) {
-      params.set("companyIds", next.companyIds.join(","));
     }
 
     startTransition(() => {
@@ -177,7 +144,7 @@ export function App() {
             setToast(msg.error);
           } else {
             setToast(
-              `Scrape finished — ${msg.result?.inserted ?? 0} new entry-level jobs from ${msg.result?.companiesAttempted ?? 0} boards`
+              `Scrape finished — ${msg.result?.inserted ?? 0} new jobs`
             );
             loadJobs(filtersRef.current);
           }
@@ -212,35 +179,12 @@ export function App() {
   }, [toast]);
 
   const updateFilters = (next: JobFilters) => {
-    const locked = { ...next, experienceLevels: ["entry_level" as const] };
+    const locked = { ...next, experienceLevels: ["entry_level" as const], companyIds: [] };
     setFilters(locked);
     loadJobs(locked);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "set_filters", filters: locked }));
     }
-  };
-
-  const selectCompany = (company: Company) => {
-    if (filters.companyIds.includes(company.id)) return;
-    const nextIds = [...filters.companyIds, company.id];
-    setSelectedCompanies((prev) =>
-      prev.some((c) => c.id === company.id) ? prev : [...prev, company]
-    );
-    updateFilters({ ...filters, companyIds: nextIds });
-    setCompanyQuery("");
-  };
-
-  const clearCompanies = () => {
-    setSelectedCompanies([]);
-    updateFilters({ ...filters, companyIds: [] });
-  };
-
-  const removeCompany = (id: string) => {
-    setSelectedCompanies((prev) => prev.filter((c) => c.id !== id));
-    updateFilters({
-      ...filters,
-      companyIds: filters.companyIds.filter((c) => c !== id),
-    });
   };
 
   const requestNotifications = async () => {
@@ -256,16 +200,13 @@ export function App() {
   const scrapeNow = async () => {
     setScraping(true);
     try {
-      const body =
-        filters.companyIds.length > 0 ? { companyIds: filters.companyIds } : {};
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({}),
       });
       const data = (await res.json()) as {
         error?: string;
-        message?: string;
         progress?: {
           running: boolean;
           completed: number;
@@ -280,11 +221,7 @@ export function App() {
         return;
       }
       if (data.progress) setScrapeProgress(data.progress);
-      setToast(
-        filters.companyIds.length > 0
-          ? "Scraping selected companies…"
-          : "Scraping all 15,000+ boards — feed will fill as results arrive"
-      );
+      setToast("Scraping all boards…");
     } catch {
       setToast("Scrape failed");
       setScraping(false);
@@ -298,8 +235,8 @@ export function App() {
         <div className="brand-block">
           <p className="brand">Job Scraper</p>
           <p className="tagline">
-            USA · Entry Level / SDE I · Intern & Full-time ·{" "}
-            {companyTotal.toLocaleString() || "1,000+"} boards
+            USA entry-level & intern roles ·{" "}
+            {companyTotal.toLocaleString() || "15,000+"} boards
           </p>
         </div>
         <div className="top-actions">
@@ -308,7 +245,7 @@ export function App() {
             {status === "live" ? "Live" : status === "connecting" ? "Connecting" : "Offline"}
           </span>
           <button type="button" className="ghost" onClick={() => void requestNotifications()}>
-            Enable alerts
+            Alerts
           </button>
           <button
             type="button"
@@ -321,14 +258,23 @@ export function App() {
         </div>
       </header>
 
-      {companyStats.total ? (
-        <p className="board-stats">
-          Entry Level / SDE I only · Boards {companyStats.total.toLocaleString()} · Greenhouse{" "}
-          {(companyStats.greenhouse ?? 0).toLocaleString()} · Lever{" "}
-          {(companyStats.lever ?? 0).toLocaleString()} · Ashby{" "}
-          {(companyStats.ashby ?? 0).toLocaleString()}
-        </p>
-      ) : null}
+      <div className="simple-tracks" aria-label="Track filters">
+        {(["sde", "ai", "ml"] as RoleCategory[]).map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            className={filters.categories.includes(cat) ? "chip on" : "chip"}
+            onClick={() =>
+              updateFilters({
+                ...filters,
+                categories: toggleInList(filters.categories, cat),
+              })
+            }
+          >
+            {categoryLabel(cat)}
+          </button>
+        ))}
+      </div>
 
       {scrapeProgress?.running || scraping ? (
         <div className="scrape-banner">
@@ -336,8 +282,7 @@ export function App() {
             <strong>Scraping boards…</strong>
             <span>
               {scrapeProgress?.completed?.toLocaleString() ?? 0}/
-              {scrapeProgress?.total?.toLocaleString() ?? "…"} · matched{" "}
-              {scrapeProgress?.jobsFound?.toLocaleString() ?? 0}
+              {scrapeProgress?.total?.toLocaleString() ?? "…"}
             </span>
           </div>
           <div className="scrape-bar">
@@ -350,92 +295,14 @@ export function App() {
               }}
             />
           </div>
-          <p className="muted">
-            Entry-level USA roles are uncommon on many boards — a full pass can take several minutes.
-            Columns update when the run finishes.
-          </p>
         </div>
       ) : null}
-
-      <section className="filters" aria-label="Filters">
-        <div className="filter-group">
-          <h2>Track</h2>
-          <div className="chips">
-            {(["sde", "ai", "ml"] as RoleCategory[]).map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                className={filters.categories.includes(cat) ? "chip on" : "chip"}
-                onClick={() =>
-                  updateFilters({
-                    ...filters,
-                    categories: toggleInList(filters.categories, cat),
-                  })
-                }
-              >
-                {categoryLabel(cat)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="filter-group companies">
-          <h2>Companies</h2>
-          <div className="company-search">
-            <input
-              type="search"
-              placeholder="Search boards (Stripe, OpenAI, Figma…)"
-              value={companyQuery}
-              onChange={(e) => setCompanyQuery(e.target.value)}
-              aria-label="Search companies"
-            />
-            <button type="button" className="ghost compact" onClick={clearCompanies}>
-              All companies
-            </button>
-          </div>
-
-          {selectedCompanies.length > 0 && (
-            <div className="chips wrap selected">
-              {selectedCompanies.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="chip on"
-                  onClick={() => removeCompany(c.id)}
-                  title="Remove filter"
-                >
-                  {c.name} ×
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="chips wrap suggestions">
-            {suggestions
-              .filter((c) => !filters.companyIds.includes(c.id))
-              .slice(0, 24)
-              .map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="chip"
-                  onClick={() => selectCompany(c)}
-                >
-                  {c.name}
-                  <span className="ats">{c.ats}</span>
-                </button>
-              ))}
-          </div>
-        </div>
-      </section>
 
       <section className="feed columns" aria-live="polite">
         <div className="column">
           <div className="feed-head">
             <h2>Intern</h2>
-            <p>
-              {pending ? "Updating…" : `${internJobs.length}`} · last 24h
-            </p>
+            <p>{pending ? "Updating…" : `${internJobs.length}`} · last 24h</p>
           </div>
           {internJobs.length === 0 ? (
             <div className="empty compact">
@@ -453,9 +320,7 @@ export function App() {
         <div className="column">
           <div className="feed-head">
             <h2>Full-time</h2>
-            <p>
-              {pending ? "Updating…" : `${fullTimeJobs.length}`} · Entry / SDE I
-            </p>
+            <p>{pending ? "Updating…" : `${fullTimeJobs.length}`} · Entry / SDE I</p>
           </div>
           {fullTimeJobs.length === 0 ? (
             <div className="empty compact">
