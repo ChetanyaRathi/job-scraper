@@ -2,7 +2,7 @@
 
 A real-time job scraper that continuously monitors company career pages, filters for freshly posted roles, and streams new matches to a live frontend feed with notifications.
 
-Users pick what they care about — **Entry Level** roles, **SDE / AI / ML** tracks, and specific **Companies** — and the system does the rest: scraping on a schedule, keeping recent USA entry-level openings (default last 30 days), persisting them, and pushing new hits to the browser the moment they appear.
+Users pick what they care about — **Entry Level** roles, **SDE / AI / ML** tracks, and specific **Companies** — and the system does the rest: scraping on a schedule, keeping USA entry-level openings from today and yesterday (last 48 hours), persisting them, and pushing new hits to the browser the moment they appear.
 
 ---
 
@@ -12,7 +12,7 @@ Users pick what they care about — **Entry Level** roles, **SDE / AI / ML** tra
 - **Two-column live feed** — Intern vs Full-time.
 - **User-driven filters** — role track (SDE / AI / ML) and target companies.
 - **Scheduled scraping** — a Playwright-based scheduler crawls company career boards every 10 minutes.
-- **Freshness window** — only jobs posted (or first seen) in the last 30 days are kept (entry roles stay open longer than 24h).
+- **Freshness window** — only jobs posted (or first seen) today or yesterday (last 48 hours) are kept in the feed.
 - **Durable storage** — matched jobs are stored in PostgreSQL with deduplication.
 - **Real-time delivery** — newly discovered jobs are pushed to the frontend over WebSockets.
 - **Live feed + notifications** — the frontend renders an always-updating feed and optional browser alerts.
@@ -25,7 +25,7 @@ Users pick what they care about — **Entry Level** roles, **SDE / AI / ML** tra
 flowchart TD
     A["User selects filters<br/>• Entry Level<br/>• SDE / AI / ML<br/>• Companies"] --> B["Playwright Scheduler<br/>(runs every 10 min)"]
     B --> C["Scrape Company<br/>Careers Pages"]
-    C --> D["Keep jobs posted<br/>in last 30 days"]
+    C --> D["Keep jobs posted<br/>today & yesterday"]
     D --> E[("Store in PostgreSQL")]
     E --> F["Push new jobs<br/>via WebSocket"]
     F --> G["Frontend<br/>(Live Feed + Notifications)"]
@@ -46,7 +46,7 @@ Playwright Scheduler (every 10 min)
 Scrape Company Careers Pages
 
         ↓
-Keep jobs posted in last 30 days
+Keep jobs posted today & yesterday (48h)
 
         ↓
 Store in PostgreSQL
@@ -145,7 +145,7 @@ Then open **http://localhost:5173**
 | `DATABASE_URL` | PostgreSQL connection string |
 | `PORT` | API / WebSocket port (default `3001`) |
 | `SCRAPE_INTERVAL_MINUTES` | How often to scrape (default `10`) |
-| `FRESHNESS_HOURS` | Max job age to keep (default `720` = 30 days) |
+| `FRESHNESS_HOURS` | Max job age to keep (default `48` = today + yesterday) |
 | `SCRAPE_ON_START` | Run a scrape when the server boots (default `false`) |
 | `SCRAPE_CONCURRENCY` | Parallel company fetches (default `40`) |
 | `SCRAPE_LIMIT` | Cap companies per cycle; `0` = all (default `0`) |
