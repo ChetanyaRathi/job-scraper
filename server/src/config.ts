@@ -12,7 +12,8 @@ export const config = {
   databaseUrl: env("DATABASE_URL", "postgresql://jobscraper:jobscraper@localhost:5432/jobscraper"),
   port: Number(env("PORT", "3001")),
   scrapeIntervalMinutes: Number(env("SCRAPE_INTERVAL_MINUTES", "10")),
-  freshnessHours: Number(env("FRESHNESS_HOURS", "24")),
+  // Entry/new-grad roles stay open for weeks; 24h is too aggressive.
+  freshnessHours: Number(env("FRESHNESS_HOURS", "720")),
   scrapeOnStart: env("SCRAPE_ON_START", "true") === "true",
   /** Parallel company fetches per scrape cycle */
   scrapeConcurrency: Number(env("SCRAPE_CONCURRENCY", "40")),

@@ -292,7 +292,7 @@ export function App() {
             <div>
               <h2>{jobType === "intern" ? "Intern roles" : "Full-time roles"}</h2>
               <p>
-                {pending ? "Updating…" : `${visibleJobs.length} roles`} · last 24h · Entry / SDE I
+                {pending ? "Updating…" : `${visibleJobs.length} roles`} · last 30 days · Entry / SDE I
               </p>
             </div>
             <div className="results-actions">
