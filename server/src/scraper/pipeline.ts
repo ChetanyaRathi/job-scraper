@@ -10,6 +10,7 @@ import {
   tickScrapeProgress,
 } from "./progress.js";
 import { scrapeCompany, withApi } from "./scrapeCompany.js";
+import { hub } from "../ws/hub.js";
 
 export interface ScrapeRunResult {
   scraped: number;
@@ -56,18 +57,7 @@ export async function runScrapePipeline(
   const insertedAll: JobRow[] = [];
   const errors: ScrapeRunResult["errors"] = [];
   let completed = 0;
-  let pendingFlush: ScrapedJob[] = [];
-
-  const flush = async () => {
-    if (pendingFlush.length === 0) return;
-    const batch = pendingFlush;
-    pendingFlush = [];
-    const usaJobs = config.usaOnly ? filterUsaJobs(batch) : batch;
-    const fresh = filterFreshJobs(usaJobs);
-    const inserted = await insertNewJobs(fresh);
-    insertedAll.push(...inserted);
-    return inserted;
-  };
+  let lastFlushCount = 0;
 
   console.log(
     `[scraper] Starting cycle — ${targets.length} companies, concurrency=${config.scrapeConcurrency}`
@@ -80,7 +70,6 @@ export async function runScrapePipeline(
         try {
           const jobs = await scrapeCompany(api, company);
           allJobs.push(...jobs);
-          pendingFlush.push(...jobs);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           errors.push({ companyId: company.id, message });
@@ -102,21 +91,34 @@ export async function runScrapePipeline(
       });
     });
 
-    await flush();
+    // Flush in chunks so the UI can receive jobs before the entire run ends.
+    const usaJobs = config.usaOnly ? filterUsaJobs(allJobs) : allJobs;
+    const fresh = filterFreshJobs(usaJobs);
+    const chunkSize = 100;
+    for (let i = 0; i < fresh.length; i += chunkSize) {
+      const chunk = fresh.slice(i, i + chunkSize);
+      const inserted = await insertNewJobs(chunk);
+      insertedAll.push(...inserted);
+      if (inserted.length > 0) {
+        hub.broadcastNewJobs(inserted);
+      }
+      lastFlushCount += inserted.length;
+    }
 
     console.log(
-      `[scraper] Done — companies=${targets.length} scraped=${allJobs.length} new=${insertedAll.length} errors=${errors.length}`
+      `[scraper] Done — companies=${targets.length} scraped=${allJobs.length} usa=${usaJobs.length} fresh=${fresh.length} new=${insertedAll.length} errors=${errors.length}`
     );
 
     return {
       scraped: allJobs.length,
-      usa: insertedAll.length,
-      fresh: insertedAll.length,
+      usa: usaJobs.length,
+      fresh: fresh.length,
       inserted: insertedAll,
       companiesAttempted: targets.length,
       errors,
     };
   } finally {
     endScrapeProgress();
+    void lastFlushCount;
   }
 }
